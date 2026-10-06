@@ -20,15 +20,51 @@ import org.junit.Rule
 class TodoTest {
     @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
-    @Test fun `session host initializes and processes queued events in order`() = runTest(mainDispatcherRule.dispatcher) {
+    @Test fun `rapid typing updates immediately and keeps the newest value`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
         val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
+        advanceUntilIdle()
+
+        val text = "abcdefghijklmnop"
+        for (length in 1..text.length) {
+            val value = text.take(length)
+            vm.input(UiInput.TextChanged("todo.draft", value))
+            assertEquals(value, vm.result.field().value)
+        }
+
+        advanceUntilIdle()
+        assertEquals(text, vm.result.field().value)
+    }
+
+    @Test fun `typing then adding uses the complete text and clears the field`() = runTest(mainDispatcherRule.dispatcher) {
+        val memory = MemoryStore()
+        val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
+        advanceUntilIdle()
+
         vm.input(UiInput.TextChanged("todo.draft", "Queued"))
+        assertEquals("Queued", vm.result.field().value)
         vm.action("todo.add")
         advanceUntilIdle()
 
         assertTrue(vm.result.texts().contains("Queued"))
+        assertEquals("", vm.result.field().value)
         assertEquals(1, memory.writes)
+    }
+
+    @Test fun `rejected over-limit typing is reverted by Lua`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), MemoryStore().store, mainDispatcherRule.dispatcher)
+        advanceUntilIdle()
+        val accepted = "😀".repeat(200)
+        vm.input(UiInput.TextChanged("todo.draft", accepted))
+        advanceUntilIdle()
+
+        val rejected = "😀".repeat(201)
+        vm.input(UiInput.TextChanged("todo.draft", rejected))
+        assertEquals(rejected, vm.result.field().value)
+        advanceUntilIdle()
+
+        assertEquals(accepted, vm.result.field().value)
+        assertEquals("Task titles can be at most 200 characters.", vm.result.field().error)
     }
 
     @Test fun `empty start add restore toggle and delete use stable numeric IDs`() {
@@ -151,6 +187,8 @@ class TodoTest {
     }
 
     private fun LuaUiResult.checkboxes() = nodes().filterIsInstance<UiNode.Checkbox>()
+
+    private fun LuaUiResult.field() = nodes().filterIsInstance<UiNode.TextField>().single()
 
     private fun UiNode.flatten(): List<UiNode> = listOf(this) + when (this) {
         is UiNode.Card -> children.flatMap { it.flatten() }

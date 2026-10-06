@@ -58,7 +58,8 @@ class LuaSessionVm(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val session = LuaSession(script, store)
-    private val events = Channel<LuaEvent>(Channel.UNLIMITED)
+    private val events = Channel<QueuedEvent>(Channel.UNLIMITED)
+    private var revision = 0L
 
     var result by mutableStateOf<LuaUiResult>(LuaUiResult.Success(UiNode.Text("Loading…")))
         private set
@@ -66,27 +67,51 @@ class LuaSessionVm(
     init {
         viewModelScope.launch {
             result = withContext(io) { session.start() }
-            for (event in events) result = withContext(io) { session.dispatch(event) }
+            for (queued in events) {
+                val next = withContext(io) { session.dispatch(queued.event) }
+                if (queued.revision == revision) result = next
+            }
         }
     }
 
     fun action(action: String) {
-        events.trySend(LuaEvent.Action(action))
+        enqueue(LuaEvent.Action(action))
     }
 
     fun input(input: UiInput) {
-        events.trySend(
-            when (input) {
-                is UiInput.TextChanged -> LuaEvent.TextChanged(input.action, input.value)
-                is UiInput.CheckedChanged -> LuaEvent.CheckedChanged(input.action, input.checked)
-            },
-        )
+        val event = when (input) {
+            is UiInput.TextChanged -> LuaEvent.TextChanged(input.action, input.value)
+            is UiInput.CheckedChanged -> LuaEvent.CheckedChanged(input.action, input.checked)
+        }
+        if (enqueue(event) && input is UiInput.TextChanged) {
+            val current = result
+            if (current is LuaUiResult.Success) {
+                result = LuaUiResult.Success(current.root.withText(input.action, input.value))
+            }
+        }
+    }
+
+    private fun enqueue(event: LuaEvent): Boolean {
+        val next = revision + 1
+        if (events.trySend(QueuedEvent(next, event)).isFailure) return false
+        revision = next
+        return true
     }
 
     override fun onCleared() {
         events.close()
         session.close()
     }
+
+    private data class QueuedEvent(val revision: Long, val event: LuaEvent)
+}
+
+private fun UiNode.withText(action: String, value: String): UiNode = when (this) {
+    is UiNode.Card -> UiNode.Card(children.map { it.withText(action, value) })
+    is UiNode.Column -> UiNode.Column(children.map { it.withText(action, value) }, gap)
+    is UiNode.Row -> UiNode.Row(children.map { it.withText(action, value) }, gap)
+    is UiNode.TextField -> if (enabled && this.action == action) copy(value = value) else this
+    else -> this
 }
 
 @Composable
