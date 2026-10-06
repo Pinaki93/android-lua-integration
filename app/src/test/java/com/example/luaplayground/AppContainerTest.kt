@@ -1,5 +1,6 @@
 package com.example.luaplayground
 
+import com.example.luacompose.JsonStore
 import com.example.luaplayground.feature.playground.PlaygroundVm
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -24,12 +25,23 @@ class AppContainerTest {
 
     @Test fun `features receive the shared navigator`() {
         assertSame(AppNavigator, container.console().navigator)
+        assertSame(AppNavigator, container.dashboard().navigator)
         assertSame(AppNavigator, container.playground().navigator)
+        assertSame(container.luaUiEngine, container.dashboard().engine)
         assertEquals(PlaygroundVm::class.java, container.playground().createVm().javaClass)
     }
 
     @Test fun `feature containers keep stable identities`() {
         assertSame(container.console(), container.console())
+        assertSame(container.dashboard(), container.dashboard())
         assertSame(container.playground(), container.playground())
+        assertSame(container.todo(), container.todo())
+    }
+
+    @Test fun `todo store can be injected without Android context`() {
+        val store = JsonStore({ null }, {}, {})
+        val app = AppContainer(assets, engine, AppNavigator, todoStore = store)
+
+        assertSame(store, app.todoStore)
     }
 }

@@ -9,7 +9,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.luaplayground.feature.console.ConsoleFeature
+import com.example.luaplayground.feature.dashboard.DashboardFeature
 import com.example.luaplayground.feature.playground.PlaygroundFeature
+import com.example.luaplayground.feature.todo.TodoFeature
 
 @Composable
 fun LuaApp(container: AppContainer) {
@@ -27,6 +29,12 @@ fun LuaApp(container: AppContainer) {
                 }
                 composable(CONSOLE_ROUTE) {
                     ConsoleFeature(container.console())
+                }
+                composable(DASHBOARD_ROUTE) {
+                    DashboardFeature(container.dashboard())
+                }
+                composable(TODO_ROUTE) {
+                    TodoFeature(container.todo())
                 }
             }
         }

@@ -27,8 +27,14 @@ fun PlaygroundFeature(container: PlaygroundContainer) {
     ) {
         Text("Lua Playground", style = MaterialTheme.typography.headlineLarge)
         Text("Small, explicit Lua capabilities you can try on this device.")
+        Button(onClick = viewModel::openDashboard) {
+            Text("Lua Compose dashboard")
+        }
         Button(onClick = viewModel::openConsole) {
             Text("Console input and output")
+        }
+        Button(onClick = viewModel::openTodo) {
+            Text("Persistent todo form")
         }
     }
 }

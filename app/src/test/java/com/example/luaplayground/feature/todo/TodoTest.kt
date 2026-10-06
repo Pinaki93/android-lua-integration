@@ -1,0 +1,161 @@
+package com.example.luaplayground.feature.todo
+
+import com.example.luacompose.JsonStore
+import com.example.luacompose.LuaEvent
+import com.example.luacompose.LuaSession
+import com.example.luacompose.LuaUiResult
+import com.example.luacompose.UiNode
+import com.example.luacompose.UiInput
+import com.example.luaplayground.MainDispatcherRule
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.Rule
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class TodoTest {
+    @get:Rule val mainDispatcherRule = MainDispatcherRule()
+
+    @Test fun `session host initializes and processes queued events in order`() = runTest(mainDispatcherRule.dispatcher) {
+        val memory = MemoryStore()
+        val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
+        vm.input(UiInput.TextChanged("todo.draft", "Queued"))
+        vm.action("todo.add")
+        advanceUntilIdle()
+
+        assertTrue(vm.result.texts().contains("Queued"))
+        assertEquals(1, memory.writes)
+    }
+
+    @Test fun `empty start add restore toggle and delete use stable numeric IDs`() {
+        val memory = MemoryStore()
+        val first = session(memory)
+        assertTrue(first.start().texts().contains("No tasks yet. Add one above."))
+        first.dispatch(LuaEvent.TextChanged("todo.draft", "  Walk outside  "))
+        val added = first.dispatch(LuaEvent.Action("todo.add"))
+        assertTrue(added.texts().contains("Walk outside"))
+        assertEquals(1, memory.writes)
+        assertTrue(memory.text().contains("\"nextId\":2"))
+
+        val restored = session(memory)
+        assertTrue(restored.start().texts().contains("Walk outside"))
+        val toggled = restored.dispatch(LuaEvent.CheckedChanged("todo.toggle.1", true))
+        assertTrue(toggled.checkboxes().single().checked)
+        val writes = memory.writes
+        restored.dispatch(LuaEvent.CheckedChanged("todo.toggle.1", true))
+        restored.dispatch(LuaEvent.CheckedChanged("todo.toggle.99", false))
+        assertEquals(writes, memory.writes)
+        assertTrue(restored.dispatch(LuaEvent.Action("todo.delete.1")).texts().contains("No tasks yet. Add one above."))
+    }
+
+    @Test fun `draft validation trims blanks and counts unicode code points`() {
+        val memory = MemoryStore()
+        val session = session(memory)
+        session.start()
+        val blank = session.dispatch(LuaEvent.Action("todo.add"))
+        assertTrue(blank.texts().contains("Enter a task title."))
+        assertEquals(0, memory.writes)
+
+        val accepted = session.dispatch(LuaEvent.TextChanged("todo.draft", "😀".repeat(200)))
+        assertEquals("😀".repeat(200), accepted.nodes().filterIsInstance<UiNode.TextField>().single().value)
+        val latest = session.dispatch(LuaEvent.TextChanged("todo.draft", "😀".repeat(201)))
+        val field = latest.nodes().filterIsInstance<UiNode.TextField>().single()
+        assertEquals("😀".repeat(200), field.value)
+        assertEquals("Task titles can be at most 200 characters.", field.error)
+        session.dispatch(LuaEvent.Action("todo.add"))
+        assertTrue(memory.text().contains("😀".repeat(200)))
+    }
+
+    @Test fun `failed saves preserve committed UI and draft then retry`() {
+        val memory = MemoryStore()
+        val session = session(memory)
+        session.start()
+        session.dispatch(LuaEvent.TextChanged("todo.draft", "Retry me"))
+        memory.writeFailure = true
+        val failed = session.dispatch(LuaEvent.Action("todo.add"))
+        assertTrue(failed.texts().contains("Could not save tasks. Please try again."))
+        assertEquals("Retry me", failed.nodes().filterIsInstance<UiNode.TextField>().single().value)
+        assertTrue(failed.checkboxes().isEmpty())
+
+        memory.writeFailure = false
+        val saved = session.dispatch(LuaEvent.Action("todo.add"))
+        assertTrue(saved.texts().contains("Retry me"))
+        assertEquals("", saved.nodes().filterIsInstance<UiNode.TextField>().single().value)
+    }
+
+    @Test fun `corrupt schema blocks mutation until successful reload`() {
+        val memory = MemoryStore("""{"version":2,"nextId":1,"items":[]}""")
+        val session = session(memory)
+        val failed = session.start()
+        assertTrue(failed.texts().contains("Could not load saved tasks. Reload before editing."))
+        session.dispatch(LuaEvent.TextChanged("todo.draft", "blocked"))
+        session.dispatch(LuaEvent.Action("todo.add"))
+        assertEquals(0, memory.writes)
+
+        memory.bytes = """{"version":1,"nextId":2,"items":[{"id":1,"title":"Recovered","completed":false}]}""".toByteArray()
+        val loaded = session.dispatch(LuaEvent.Action("todo.reload"))
+        assertTrue(loaded.texts().contains("Recovered"))
+        assertFalse(loaded.texts().contains("Could not load saved tasks. Reload before editing."))
+    }
+
+    @Test fun `maximum list renders and refuses another write`() {
+        val items = (1..100).joinToString(",") { """{"id":$it,"title":"Task $it","completed":false}""" }
+        val memory = MemoryStore("""{"version":1,"nextId":101,"items":[$items]}""")
+        val session = session(memory)
+        val result = session.start()
+        assertEquals(100, result.checkboxes().size)
+        assertTrue(result.texts().contains("0 spaces left"))
+        session.dispatch(LuaEvent.TextChanged("todo.draft", "Extra"))
+        session.dispatch(LuaEvent.Action("todo.add"))
+        assertEquals(0, memory.writes)
+    }
+
+    private fun session(memory: MemoryStore) = LuaSession(
+        java.io.File("src/main/assets/todo.lua").readText(),
+        memory.store,
+    )
+
+    private class MemoryStore(initial: String? = null) {
+        var bytes = initial?.toByteArray()
+        var writes = 0
+        var writeFailure = false
+        val store = JsonStore(
+            read = { bytes?.copyOf() },
+            write = { value ->
+                if (writeFailure) error("private backend detail")
+                writes++
+                bytes = value.copyOf()
+            },
+            delete = { bytes = null },
+        )
+        fun text() = bytes!!.toString(Charsets.UTF_8)
+    }
+
+    private fun LuaUiResult.nodes(): List<UiNode> = when (this) {
+        is LuaUiResult.Failure -> emptyList()
+        is LuaUiResult.Success -> root.flatten()
+    }
+
+    private fun LuaUiResult.texts() = nodes().flatMap {
+        when (it) {
+            is UiNode.Button -> listOf(it.text)
+            is UiNode.Checkbox -> listOf(it.label)
+            is UiNode.Text -> listOf(it.text)
+            is UiNode.TextField -> listOf(it.label, it.value) + listOfNotNull(it.error)
+            else -> emptyList()
+        }
+    }
+
+    private fun LuaUiResult.checkboxes() = nodes().filterIsInstance<UiNode.Checkbox>()
+
+    private fun UiNode.flatten(): List<UiNode> = listOf(this) + when (this) {
+        is UiNode.Card -> children.flatMap { it.flatten() }
+        is UiNode.Column -> children.flatMap { it.flatten() }
+        is UiNode.Row -> children.flatMap { it.flatten() }
+        else -> emptyList()
+    }
+}

@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Lua Playground"
 include(":app")
+include(":lua-compose")

@@ -29,4 +29,24 @@ class AssetManagerTest {
         assertEquals("print('ok')", scripts.read("hello.lua"))
         assertEquals("hello.lua", requested)
     }
+
+    @Test fun `dashboard reads its app asset`() {
+        val assets = AssetManager(
+            listFiles = { emptyArray() },
+            readFile = { "console:$it" },
+            readDashboardFile = { "dashboard" },
+        )
+
+        assertEquals("dashboard", assets.readDashboard())
+    }
+
+    @Test fun `todo reads its app asset`() {
+        val assets = AssetManager(
+            listFiles = { emptyArray() },
+            readFile = { "console:$it" },
+            readTodoFile = { "todo" },
+        )
+
+        assertEquals("todo", assets.readTodo())
+    }
 }
