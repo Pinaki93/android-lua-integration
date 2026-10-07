@@ -3,6 +3,30 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val luaCompiler by configurations.creating
+val luaSources = rootProject.layout.projectDirectory.dir("lua")
+val compiledLua = layout.buildDirectory.dir("generated/luaAssets")
+val cleanCompiledLua by tasks.registering(Delete::class) {
+    delete(compiledLua)
+}
+val luaCompileTasks = fileTree(luaSources) { include("**/*.lua") }.files.map { source ->
+    val relativePath = source.relativeTo(luaSources.asFile).path
+    tasks.register<JavaExec>("compileLua${relativePath.replace(Regex("[^A-Za-z0-9]"), "_")}") {
+        dependsOn(cleanCompiledLua)
+        mustRunAfter(cleanCompiledLua)
+        classpath = luaCompiler
+        mainClass.set("luac")
+        val output = compiledLua.map { it.file(relativePath.removeSuffix(".lua") + ".luac") }
+        inputs.file(source)
+        outputs.file(output)
+        doFirst { output.get().asFile.parentFile.mkdirs() }
+        args("-s", "-o", output.get().asFile.absolutePath, source.absolutePath)
+    }
+}
+val compileLua by tasks.registering {
+    dependsOn(luaCompileTasks)
+}
+
 android {
     namespace = "com.example.luaplayground"
     compileSdk = 37
@@ -32,7 +56,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    sourceSets.named("main") {
+        assets.directories.add(compiledLua.get().asFile.absolutePath)
+    }
 }
+
+tasks.named("preBuild").configure { dependsOn(compileLua) }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
@@ -47,4 +77,5 @@ dependencies {
     implementation("org.luaj:luaj-jse:3.0.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    luaCompiler("org.luaj:luaj-jse:3.0.1")
 }

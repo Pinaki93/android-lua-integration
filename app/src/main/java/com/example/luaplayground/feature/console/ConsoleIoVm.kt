@@ -29,6 +29,7 @@ class ConsoleIoVm(
     private val engine: LuaEngine,
     private val worker: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
+    private var bytecode = ByteArray(0)
     var state by mutableStateOf(initialState())
         private set
 
@@ -38,18 +39,19 @@ class ConsoleIoVm(
 
     fun selectScript(name: String) {
         if (state.running || name !in state.scripts || name == state.selectedScript) return
-        state = state.copy(selectedScript = name, source = scripts.read(name), output = "")
+        bytecode = scripts.read(name)
+        state = state.copy(selectedScript = name, source = BYTECODE_LABEL, output = "")
     }
 
     fun runScript() {
         if (state.running || state.selectedScript.isEmpty()) return
         val name = state.selectedScript
-        val source = state.source
+        val script = bytecode
         val input = state.input
         state = state.copy(output = "Running…", running = true)
 
         viewModelScope.launch {
-            val result = withContext(worker) { engine.execute(source, input, name) }
+            val result = withContext(worker) { engine.execute(script, input, name) }
             state = state.copy(output = result.displayText(), running = false)
         }
     }
@@ -57,14 +59,19 @@ class ConsoleIoVm(
     private fun initialState(): LuaUiState {
         val names = scripts.names()
         val selected = names.firstOrNull().orEmpty()
+        bytecode = selected.takeIf(String::isNotEmpty)?.let(scripts::read) ?: ByteArray(0)
         return LuaUiState(
             scripts = names,
             selectedScript = selected,
-            source = selected.takeIf(String::isNotEmpty)?.let(scripts::read).orEmpty(),
+            source = if (selected.isEmpty()) "" else BYTECODE_LABEL,
         )
     }
 
     private fun LuaResult.displayText() = error?.let {
         listOf(output.trimEnd(), "Error: $it").filter(String::isNotEmpty).joinToString("\n")
     } ?: output
+
+    private companion object {
+        const val BYTECODE_LABEL = "Precompiled Lua bytecode"
+    }
 }

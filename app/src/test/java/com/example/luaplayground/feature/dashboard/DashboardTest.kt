@@ -44,7 +44,7 @@ class DashboardTest {
     }
 
     private fun viewModel() = DashboardVm(
-        File("src/main/assets/dashboard.lua").readText(),
+        File("build/generated/luaAssets/dashboard.luac").readBytes(),
         LuaUiEngine(),
     )
 

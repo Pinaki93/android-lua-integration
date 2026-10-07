@@ -55,15 +55,15 @@ class LuaScriptsTest {
 
     @Test fun `every bundled Lua file executes without an error`() {
         val inputs = mapOf(
-            "hello.lua" to "Ada",
-            "calculator.lua" to "1\n+\n2",
-            "word_count.lua" to "hello world",
+            "hello.luac" to "Ada",
+            "calculator.luac" to "1\n+\n2",
+            "word_count.luac" to "hello world",
         )
 
-        val scripts = assetDirectory().listFiles().orEmpty().filter { it.extension == "lua" }
+        val scripts = compiledDirectory().listFiles().orEmpty().filter { it.extension == "luac" }
         assertEquals(inputs.keys, scripts.map { it.name }.toSet())
         scripts.forEach { script ->
-            val result = engine.execute(script.readText(), inputs.getValue(script.name), script.name)
+            val result = engine.execute(script.readBytes(), inputs.getValue(script.name), script.name)
             assertTrue("${script.name}: ${result.error}", result.succeeded)
         }
     }
@@ -80,7 +80,8 @@ class LuaScriptsTest {
     }
 
     private fun runScript(name: String, input: String) =
-        engine.execute(File(assetDirectory(), name).readText(), input, name)
+        engine.execute(File(sourceDirectory(), name).readText(), input, name)
 
-    private fun assetDirectory() = File("src/main/assets/lua")
+    private fun sourceDirectory() = File("../lua/console")
+    private fun compiledDirectory() = File("build/generated/luaAssets/console")
 }

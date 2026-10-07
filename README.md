@@ -15,7 +15,7 @@ Run bundled Lua 5.2 scripts in a clean Jetpack Compose app—with line-based inp
 
 ## What it does
 
-- Discovers `.lua` files bundled in `app/src/main/assets/lua`
+- Compiles root-level `lua/` sources to `.luac` assets during the Android build
 - Shows each script's source before execution
 - Accepts one input value per line
 - Captures `print` and `io.write` output in the app
@@ -49,7 +49,7 @@ The supported DSL is deliberately small:
 | `ui.textField` | required string `label`, `value`, and `action`; optional boolean `enabled` and string `error` |
 | `ui.checkbox` | required string `label`, boolean `checked`, and `action`; optional boolean `enabled` |
 
-The shipped [`dashboard.lua`](app/src/main/assets/dashboard.lua) is the canonical sample. Its state and action contract looks like this:
+The shipped [`dashboard.lua`](lua/dashboard.lua) is the canonical sample. Its state and action contract looks like this:
 
 ```lua
 return ui.column {
@@ -84,7 +84,7 @@ LuaUi(result, onAction = ::dispatch)
 
 Compose scripts get safe base functions and the supported `ui` constructors. Persistent sessions additionally get string/table functions and, only when explicitly granted, a frozen `store` capability. They cannot access Java reflection, Android APIs, arbitrary files, network, processes, modules, debug functions, or dynamic loading. Unknown fields/types, cycles, invalid actions, syntax/runtime failures, and limits return a deterministic `LuaUiResult.Failure` rather than a partial tree. Limits are 500 KiB per UTF-8 script, depth 32, 1,000 nodes, 10,000 Unicode code points per text value, 100,000 total text code points, and gaps from 0 to 1,000.
 
-The shipped [`todo.lua`](app/src/main/assets/todo.lua) owns its draft, validation, IDs, item mutations, persistence decisions, messages, and rendering. A session script returns exactly `{ render = function, onEvent = function }`; the host admits only matching enabled action, text, or checked events from the latest validated tree. Closures survive events for the session lifetime.
+The shipped [`todo.lua`](lua/todo.lua) owns its draft, validation, IDs, item mutations, persistence decisions, messages, and rendering. A session script returns exactly `{ render = function, onEvent = function }`; the host admits only matching enabled action, text, or checked events from the latest validated tree. Closures survive events for the session lifetime.
 
 The todo document is JSON in the app-private `todos.json` file:
 
@@ -127,7 +127,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## Add a script
 
-Create a `.lua` file in `app/src/main/assets/lua`. It will appear automatically in the script picker.
+Create a `.lua` file in `lua/console`. The build compiles it into the app's generated assets and it appears automatically in the script picker.
 
 ```lua
 io.write("What is your name? ")

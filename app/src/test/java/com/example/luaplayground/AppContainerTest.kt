@@ -8,8 +8,8 @@ import org.junit.Test
 
 class AppContainerTest {
     private val assets = AssetManager(
-        listFiles = { arrayOf("hello.lua") },
-        readFile = { "print('hello')" },
+        listFiles = { arrayOf("hello.luac") },
+        readFile = { "print('hello')".encodeToByteArray() },
     )
     private val engine = LuaEngine()
     private val container = AppContainer(assets, engine, AppNavigator)
@@ -20,7 +20,7 @@ class AppContainerTest {
         assertSame(assets, console.assetManager)
         assertSame(engine, console.luaEngine)
         assertSame(AppNavigator, console.navigator)
-        assertEquals("hello.lua", console.createVm().state.selectedScript)
+        assertEquals("hello.luac", console.createVm().state.selectedScript)
     }
 
     @Test fun `features receive the shared navigator`() {

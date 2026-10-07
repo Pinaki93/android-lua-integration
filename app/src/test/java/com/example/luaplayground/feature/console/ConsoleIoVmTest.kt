@@ -17,14 +17,14 @@ class ConsoleIoVmTest {
     @Test fun `initial state selects and reads the first sorted Lua script`() {
         val viewModel = viewModel(
             linkedMapOf(
-                "second.lua" to "print('second')",
-                "first.lua" to "print('first')",
+                "second.luac" to "print('second')",
+                "first.luac" to "print('first')",
             ),
         )
 
-        assertEquals(listOf("first.lua", "second.lua"), viewModel.state.scripts)
-        assertEquals("first.lua", viewModel.state.selectedScript)
-        assertEquals("print('first')", viewModel.state.source)
+        assertEquals(listOf("first.luac", "second.luac"), viewModel.state.scripts)
+        assertEquals("first.luac", viewModel.state.selectedScript)
+        assertEquals("Precompiled Lua bytecode", viewModel.state.source)
     }
 
     @Test fun `empty script directory produces an idle empty state`() {
@@ -44,29 +44,29 @@ class ConsoleIoVmTest {
     @Test fun `selecting a script loads its source and clears old output`() {
         val viewModel = viewModel(
             mapOf(
-                "first.lua" to "print('first')",
-                "second.lua" to "print('second')",
+                "first.luac" to "print('first')",
+                "second.luac" to "print('second')",
             ),
         )
         viewModel.runScript()
         mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.selectScript("second.lua")
+        viewModel.selectScript("second.luac")
 
-        assertEquals("second.lua", viewModel.state.selectedScript)
-        assertEquals("print('second')", viewModel.state.source)
+        assertEquals("second.luac", viewModel.state.selectedScript)
+        assertEquals("Precompiled Lua bytecode", viewModel.state.source)
         assertEquals("", viewModel.state.output)
     }
 
     @Test fun `selecting the current script does not read it again`() {
         var reads = 0
         val scripts = AssetManager(
-            listFiles = { arrayOf("only.lua") },
-            readFile = { reads++; "print('ok')" },
+            listFiles = { arrayOf("only.luac") },
+            readFile = { reads++; "print('ok')".encodeToByteArray() },
         )
         val viewModel = ConsoleIoVm(scripts, LuaEngine(), mainDispatcher.dispatcher)
 
-        viewModel.selectScript("only.lua")
+        viewModel.selectScript("only.luac")
 
         assertEquals(1, reads)
     }
@@ -81,7 +81,7 @@ class ConsoleIoVmTest {
     }
 
     @Test fun `successful run passes source and input to the engine`() {
-        val viewModel = viewModel(mapOf("echo.lua" to "print(io.read())"))
+        val viewModel = viewModel(mapOf("echo.luac" to "print(io.read())"))
         viewModel.updateInput("hello")
 
         viewModel.runScript()
@@ -94,7 +94,7 @@ class ConsoleIoVmTest {
     }
 
     @Test fun `runtime error is shown without a leading blank line`() {
-        val viewModel = viewModel(mapOf("broken.lua" to "error('boom')"))
+        val viewModel = viewModel(mapOf("broken.luac" to "error('boom')"))
 
         viewModel.runScript()
         mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
@@ -104,7 +104,7 @@ class ConsoleIoVmTest {
     }
 
     @Test fun `runtime error keeps output produced before failure`() {
-        val viewModel = viewModel(mapOf("broken.lua" to "print('before'); error('boom')"))
+        val viewModel = viewModel(mapOf("broken.luac" to "print('before'); error('boom')"))
 
         viewModel.runScript()
         mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
@@ -138,10 +138,10 @@ class ConsoleIoVmTest {
 
         viewModel.runScript()
         viewModel.runScript()
-        viewModel.selectScript("other.lua")
+        viewModel.selectScript("other.luac")
 
         assertTrue(viewModel.state.running)
-        assertEquals("main.lua", viewModel.state.selectedScript)
+        assertEquals("main.luac", viewModel.state.selectedScript)
         mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
         assertEquals("main\n", viewModel.state.output)
     }
@@ -150,20 +150,20 @@ class ConsoleIoVmTest {
         val viewModel = viewModel()
         viewModel.updateInput("keep me")
 
-        viewModel.selectScript("other.lua")
+        viewModel.selectScript("other.luac")
 
         assertEquals("keep me", viewModel.state.input)
     }
 
     private fun viewModel(
         files: Map<String, String> = mapOf(
-            "main.lua" to "print('main')",
-            "other.lua" to "print('other')",
+            "main.luac" to "print('main')",
+            "other.luac" to "print('other')",
         ),
     ) = ConsoleIoVm(
         scripts = AssetManager(
             listFiles = { files.keys.toTypedArray() },
-            readFile = files::getValue,
+            readFile = { files.getValue(it).encodeToByteArray() },
         ),
         engine = LuaEngine(),
         worker = mainDispatcher.dispatcher,

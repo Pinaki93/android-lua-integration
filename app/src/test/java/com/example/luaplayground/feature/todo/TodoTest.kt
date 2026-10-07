@@ -22,7 +22,7 @@ class TodoTest {
 
     @Test fun `rapid typing updates immediately and keeps the newest value`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
-        val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
+        val vm = LuaSessionVm(java.io.File("build/generated/luaAssets/todo.luac").readBytes(), memory.store, mainDispatcherRule.dispatcher)
         advanceUntilIdle()
 
         val text = "abcdefghijklmnop"
@@ -38,7 +38,7 @@ class TodoTest {
 
     @Test fun `typing then adding uses the complete text and clears the field`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
-        val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
+        val vm = LuaSessionVm(java.io.File("../lua/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
         advanceUntilIdle()
 
         vm.input(UiInput.TextChanged("todo.draft", "Queued"))
@@ -52,7 +52,7 @@ class TodoTest {
     }
 
     @Test fun `rejected over-limit typing is reverted by Lua`() = runTest(mainDispatcherRule.dispatcher) {
-        val vm = LuaSessionVm(java.io.File("src/main/assets/todo.lua").readText(), MemoryStore().store, mainDispatcherRule.dispatcher)
+        val vm = LuaSessionVm(java.io.File("../lua/todo.lua").readText(), MemoryStore().store, mainDispatcherRule.dispatcher)
         advanceUntilIdle()
         val accepted = "😀".repeat(200)
         vm.input(UiInput.TextChanged("todo.draft", accepted))
@@ -151,7 +151,7 @@ class TodoTest {
     }
 
     private fun session(memory: MemoryStore) = LuaSession(
-        java.io.File("src/main/assets/todo.lua").readText(),
+        java.io.File("../lua/todo.lua").readText(),
         memory.store,
     )
 

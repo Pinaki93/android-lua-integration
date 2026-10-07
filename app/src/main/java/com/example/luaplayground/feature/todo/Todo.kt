@@ -52,12 +52,14 @@ class TodoContainer(
     fun createVm() = LuaSessionVm(assets.readTodo(), store, io)
 }
 
-class LuaSessionVm(
-    script: String,
-    store: JsonStore,
+class LuaSessionVm private constructor(
+    private val session: LuaSession,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
-    private val session = LuaSession(script, store)
+    constructor(script: ByteArray, store: JsonStore, io: CoroutineDispatcher = Dispatchers.IO) :
+        this(LuaSession(script, store), io)
+    constructor(script: String, store: JsonStore, io: CoroutineDispatcher = Dispatchers.IO) :
+        this(LuaSession(script, store), io)
     private val events = Channel<QueuedEvent>(Channel.UNLIMITED)
     private var revision = 0L
 

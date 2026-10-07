@@ -1,5 +1,6 @@
 package com.example.luacompose
 
+import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.IdentityHashMap
@@ -29,10 +30,13 @@ sealed interface LuaEvent {
     data class CheckedChanged(override val action: String, val checked: Boolean) : LuaEvent
 }
 
-class LuaSession(
-    private val script: String,
+class LuaSession private constructor(
+    private val bytecode: ByteArray?,
+    private val source: String?,
     private val store: JsonStore? = null,
 ) : AutoCloseable {
+    constructor(script: ByteArray, store: JsonStore? = null) : this(script, null, store)
+    constructor(script: String, store: JsonStore? = null) : this(null, script, store)
     private var globals: Globals? = null
     private var render: LuaFunction? = null
     private var onEvent: LuaFunction? = null
@@ -45,7 +49,8 @@ class LuaSession(
     fun start(): LuaUiResult {
         result?.let { return it }
         if (terminal) return failure()
-        if (script.toByteArray(StandardCharsets.UTF_8).size > LuaUiEngine.MAX_SCRIPT_BYTES) {
+        val size = bytecode?.size ?: source!!.toByteArray(StandardCharsets.UTF_8).size
+        if (size > LuaUiEngine.MAX_SCRIPT_BYTES) {
             return stop(LuaUiError.Kind.Limit, "Script exceeds ${LuaUiEngine.MAX_SCRIPT_BYTES} UTF-8 bytes.")
         }
         val environment = LuaUiEngine().globals(emptyMap()).apply {
@@ -56,7 +61,8 @@ class LuaSession(
         }
         store?.let { environment.set("store", storeTable(it)) }
         val chunk = try {
-            environment.load(script, "ui.lua")
+            source?.let { environment.load(it, "ui.lua") }
+                ?: environment.load(ByteArrayInputStream(bytecode!!), "ui.luac", "b", environment)
         } catch (_: LuaError) {
             return stop(LuaUiError.Kind.Syntax, "Invalid Lua syntax.")
         }

@@ -4,16 +4,27 @@ import org.luaj.vm2.Globals
 import org.luaj.vm2.LuaError
 import org.luaj.vm2.LuaTable
 import org.luaj.vm2.LuaValue
+import org.luaj.vm2.LoadState
 import org.luaj.vm2.compiler.LuaC
 import org.luaj.vm2.lib.BaseLib
 import org.luaj.vm2.lib.OneArgFunction
+import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.IdentityHashMap
 
 class LuaUiEngine {
-    fun evaluate(script: String, state: Map<String, Any?> = emptyMap()): LuaUiResult {
-        if (script.toByteArray(StandardCharsets.UTF_8).size > MAX_SCRIPT_BYTES) {
+    fun evaluate(script: String, state: Map<String, Any?> = emptyMap()) = evaluate(
+        script.toByteArray(StandardCharsets.UTF_8).size,
+        state,
+    ) { globals -> globals.load(script, "ui.lua") }
+
+    fun evaluate(script: ByteArray, state: Map<String, Any?> = emptyMap()) = evaluate(script.size, state) { globals ->
+        globals.load(ByteArrayInputStream(script), "ui.luac", "b", globals)
+    }
+
+    private fun evaluate(size: Int, state: Map<String, Any?>, load: (Globals) -> LuaValue): LuaUiResult {
+        if (size > MAX_SCRIPT_BYTES) {
             return failure(LuaUiError.Kind.Limit, "Script exceeds $MAX_SCRIPT_BYTES UTF-8 bytes.")
         }
 
@@ -23,7 +34,7 @@ class LuaUiEngine {
             return failure(error.kind, error.message)
         }
         val chunk = try {
-            globals.load(script, "ui.lua")
+            load(globals)
         } catch (_: LuaError) {
             return failure(LuaUiError.Kind.Syntax, "Invalid Lua syntax.")
         }
@@ -49,6 +60,7 @@ class LuaUiEngine {
         keys().map(LuaValue::tojstring).filterNot(safeFunctions::contains).forEach { set(it, LuaValue.NIL) }
         set("state", stateTable(state))
         set("ui", uiTable())
+        LoadState.install(this)
         LuaC.install(this)
     }
 

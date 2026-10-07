@@ -4,6 +4,7 @@ import org.luaj.vm2.Globals
 import org.luaj.vm2.LuaError
 import org.luaj.vm2.LuaTable
 import org.luaj.vm2.LuaValue
+import org.luaj.vm2.LoadState
 import org.luaj.vm2.Varargs
 import org.luaj.vm2.compiler.LuaC
 import org.luaj.vm2.lib.BaseLib
@@ -16,6 +17,7 @@ import org.luaj.vm2.lib.TableLib
 import org.luaj.vm2.lib.VarArgFunction
 import org.luaj.vm2.lib.jse.JseMathLib
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
 import java.io.StringReader
 
 data class LuaResult(val output: String, val error: String? = null) {
@@ -23,12 +25,20 @@ data class LuaResult(val output: String, val error: String? = null) {
 }
 
 class LuaEngine {
-    fun execute(script: String, input: String = "", name: String = "script.lua"): LuaResult {
+    fun execute(script: String, input: String = "", name: String = "script.lua") = execute(input) { globals ->
+        globals.load(script, name)
+    }
+
+    fun execute(script: ByteArray, input: String = "", name: String = "script.luac") = execute(input) { globals ->
+        globals.load(ByteArrayInputStream(script), name, "bt", globals)
+    }
+
+    private fun execute(input: String, load: (Globals) -> LuaValue): LuaResult {
         val output = StringBuilder()
         val globals = globals(BufferedReader(StringReader(input)), output)
 
         return try {
-            globals.load(script, name).call()
+            load(globals).call()
             LuaResult(output.toString())
         } catch (error: LuaError) {
             LuaResult(output.toString(), error.message ?: "Lua execution failed")
@@ -43,6 +53,7 @@ class LuaEngine {
         load(StringLib())
         load(CoroutineLib())
         load(JseMathLib())
+        LoadState.install(this)
         LuaC.install(this)
 
         set("print", Print(output))

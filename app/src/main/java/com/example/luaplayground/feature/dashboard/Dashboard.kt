@@ -59,10 +59,13 @@ class DashboardContainer(
     fun createVm() = DashboardVm(assets.readDashboard(), engine)
 }
 
-class DashboardVm(
-    private val script: String,
+class DashboardVm private constructor(
+    private val bytecode: ByteArray?,
+    private val source: String?,
     private val engine: LuaUiEngine,
 ) : ViewModel() {
+    constructor(script: ByteArray, engine: LuaUiEngine) : this(script, null, engine)
+    constructor(script: String, engine: LuaUiEngine) : this(null, script, engine)
     var state by mutableStateOf(DashboardState())
         private set
 
@@ -76,16 +79,16 @@ class DashboardVm(
         result = evaluate()
     }
 
-    private fun evaluate(): LuaUiResult = engine.evaluate(
-        script,
-        mapOf(
+    private fun evaluate(): LuaUiResult {
+        val state = mapOf(
             "activeUsers" to String.format(Locale.US, "%,d", state.activeUsers),
             "revenue" to state.revenue,
             "reliability" to state.reliability,
             "activityNote" to state.activityNote,
             "refreshedAt" to state.refreshedAt,
-        ),
-    )
+        )
+        return source?.let { engine.evaluate(it, state) } ?: engine.evaluate(bytecode!!, state)
+    }
 }
 
 @Composable
