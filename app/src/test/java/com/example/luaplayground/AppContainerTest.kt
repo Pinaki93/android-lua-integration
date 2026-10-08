@@ -7,27 +7,19 @@ import org.junit.Test
 
 class AppContainerTest {
     private val assets = AssetManager(
-        listFiles = { arrayOf("hello.luac") },
-        readFile = { "print('hello')".encodeToByteArray() },
         readAppFile = { compiled("app.luac") },
+        readDashboardFile = { compiled("dashboard.luac") },
         readPageFile = { compiled(it) },
     )
     private val engine = LuaEngine()
     private val container = AppContainer(assets, engine, AppNavigator)
 
     @Test fun `native features receive shared services`() {
-        val console = container.console()
-
-        assertSame(assets, console.assetManager)
-        assertSame(engine, console.luaEngine)
-        assertSame(AppNavigator, console.navigator)
         assertSame(AppNavigator, container.dashboard().navigator)
         assertSame(container.luaUiEngine, container.dashboard().engine)
-        assertEquals("hello.luac", console.createVm().state.selectedScript)
     }
 
     @Test fun `native feature containers keep stable identities`() {
-        assertSame(container.console(), container.console())
         assertSame(container.dashboard(), container.dashboard())
     }
 
@@ -50,9 +42,8 @@ class AppContainerTest {
     @Test fun `missing page asset fails without publishing partial routes`() {
         val app = AppContainer(
             AssetManager(
-                listFiles = { emptyArray() },
-                readFile = { error("unexpected console read: $it") },
                 readAppFile = { compiled("app.luac") },
+                readDashboardFile = { compiled("dashboard.luac") },
                 readPageFile = { if (it == "todo.luac") error("missing") else compiled(it) },
             ),
         )
@@ -65,11 +56,11 @@ class AppContainerTest {
     @Test fun `startup requires exactly one start route`() {
         val app = AppContainer(
             AssetManager(
-                listFiles = { emptyArray() },
-                readFile = { byteArrayOf() },
                 readAppFile = {
                     "setStartRoute('console'); setStartRoute('dashboard')".encodeToByteArray()
                 },
+                readDashboardFile = { compiled("dashboard.luac") },
+                readPageFile = { compiled(it) },
             ),
         )
 
@@ -81,11 +72,10 @@ class AppContainerTest {
     @Test fun `oversized page fails before routes are published`() {
         val app = AppContainer(
             AssetManager(
-                listFiles = { emptyArray() },
-                readFile = { byteArrayOf() },
                 readAppFile = {
                     "registerRoute('page', 'page.luac'); setStartRoute('page')".encodeToByteArray()
                 },
+                readDashboardFile = { compiled("dashboard.luac") },
                 readPageFile = { ByteArray(com.example.luacompose.LuaUiEngine.MAX_SCRIPT_BYTES + 1) },
             ),
         )

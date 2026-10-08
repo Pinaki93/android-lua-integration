@@ -21,13 +21,12 @@ class PlaygroundLuaTest {
 
         val start = session.start()
         assertEquals(
-            listOf("Lua Compose dashboard", "Console input and output", "Persistent todo form"),
+            listOf("Lua Compose dashboard", "Persistent todo form"),
             start.nodes().filterIsInstance<UiNode.Button>().map { it.text },
         )
         session.dispatch(LuaEvent.Action("playground.dashboard"))
-        session.dispatch(LuaEvent.Action("playground.console"))
         session.dispatch(LuaEvent.Action("playground.todo"))
-        assertEquals(listOf("dashboard", "console", "todo"), routes)
+        assertEquals(listOf("dashboard", "todo"), routes)
     }
 
     private fun LuaUiResult.nodes(): List<UiNode> = when (this) {

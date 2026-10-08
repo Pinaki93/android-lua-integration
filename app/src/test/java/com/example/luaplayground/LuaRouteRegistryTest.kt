@@ -19,22 +19,26 @@ class LuaRouteRegistryTest {
 
     @Test fun `rejects ambiguous invalid and native route patterns`() {
         val invalid = listOf(
-            listOf(LuaRoute("console", "page.luac")),
+            listOf(LuaRoute("dashboard", "page.luac")),
             listOf(LuaRoute("item/{id}", "one.luac"), LuaRoute("item/{name}", "two.luac")),
             listOf(LuaRoute("item/{id}/{id}", "page.luac")),
             listOf(LuaRoute("item?id={id}", "page.luac")),
             listOf(LuaRoute("item//id", "page.luac")),
         )
 
-        invalid.forEach { assertFalse(registry.accepts("console", it)) }
+        invalid.forEach { assertFalse(registry.accepts("dashboard", it)) }
     }
 
     @Test fun `rejects unsafe scripts and unresolved start routes`() {
         listOf("../page.luac", "/page.luac", "features\\page.luac", "page.lua").forEach { script ->
-            assertFalse(registry.accepts("console", listOf(LuaRoute("page", script))))
+            assertFalse(registry.accepts("dashboard", listOf(LuaRoute("page", script))))
         }
         assertFalse(registry.accepts("item/{id}", listOf(LuaRoute("item/{id}", "item.luac"))))
         assertFalse(registry.accepts("missing", listOf(LuaRoute("page", "page.luac"))))
+    }
+
+    @Test fun `former console route is available to Lua pages`() {
+        assertTrue(registry.accepts("console", listOf(LuaRoute("console", "console.luac"))))
     }
 
     @Test fun `storage names are app private basenames`() {

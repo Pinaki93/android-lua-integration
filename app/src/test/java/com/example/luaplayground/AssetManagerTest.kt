@@ -4,59 +4,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AssetManagerTest {
-    @Test fun `names returns only sorted Lua files`() {
-        val scripts = AssetManager(
-            listFiles = { arrayOf("z.luac", "notes.txt", "a.luac", "LUAC") },
-            readFile = { byteArrayOf() },
-        )
+    private val assets = AssetManager(
+        readAppFile = { "app".encodeToByteArray() },
+        readDashboardFile = { "dashboard".encodeToByteArray() },
+        readPageFile = { "page:$it".encodeToByteArray() },
+    )
 
-        assertEquals(listOf("a.luac", "z.luac"), scripts.names())
-    }
-
-    @Test fun `names handles a missing asset directory`() {
-        val scripts = AssetManager(listFiles = { null }, readFile = { byteArrayOf() })
-
-        assertEquals(emptyList<String>(), scripts.names())
-    }
-
-    @Test fun `read delegates the exact script name`() {
-        var requested = ""
-        val scripts = AssetManager(
-            listFiles = { emptyArray() },
-            readFile = { name -> requested = name; "print('ok')".encodeToByteArray() },
-        )
-
-        assertEquals("print('ok')", scripts.read("hello.luac").decodeToString())
-        assertEquals("hello.luac", requested)
-    }
-
-    @Test fun `dashboard reads its app asset`() {
-        val assets = AssetManager(
-            listFiles = { emptyArray() },
-            readFile = { "console:$it".encodeToByteArray() },
-            readDashboardFile = { "dashboard".encodeToByteArray() },
-        )
-
-        assertEquals("dashboard", assets.readDashboard().decodeToString())
-    }
-
-    @Test fun `app reads its startup asset`() {
-        val assets = AssetManager(
-            listFiles = { emptyArray() },
-            readFile = { error("unexpected console read: $it") },
-            readAppFile = { "app".encodeToByteArray() },
-        )
-
+    @Test fun `reads app startup asset`() {
         assertEquals("app", assets.readApp().decodeToString())
     }
 
-    @Test fun `page reads a nested app asset`() {
-        val assets = AssetManager(
-            listFiles = { emptyArray() },
-            readFile = { "console:$it".encodeToByteArray() },
-            readPageFile = { "page:$it".encodeToByteArray() },
-        )
+    @Test fun `reads dashboard asset`() {
+        assertEquals("dashboard", assets.readDashboard().decodeToString())
+    }
 
+    @Test fun `reads nested page asset`() {
         assertEquals("page:features/todo.luac", assets.readPage("features/todo.luac").decodeToString())
     }
 }

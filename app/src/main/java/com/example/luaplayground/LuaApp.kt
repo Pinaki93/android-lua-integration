@@ -19,7 +19,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.luaplayground.feature.console.ConsoleFeature
 import com.example.luaplayground.feature.dashboard.DashboardFeature
 import com.example.luaplayground.feature.dynamic.LuaFeature
 import kotlinx.coroutines.delay
@@ -76,9 +75,6 @@ private fun DynamicNavHost(
         navController = navController,
         startDestination = startRoute,
     ) {
-        composable(CONSOLE_ROUTE) {
-            ConsoleFeature(container.console())
-        }
         composable(DASHBOARD_ROUTE) {
             DashboardFeature(container.dashboard())
         }

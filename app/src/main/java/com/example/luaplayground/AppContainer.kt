@@ -4,7 +4,6 @@ import android.content.res.AssetManager as AndroidAssetManager
 import androidx.compose.runtime.Immutable
 import com.example.luacompose.JsonStore
 import com.example.luacompose.LuaUiEngine
-import com.example.luaplayground.feature.console.ConsoleContainer
 import com.example.luaplayground.feature.dashboard.DashboardContainer
 import com.example.luaplayground.feature.dynamic.LuaContainer
 
@@ -17,7 +16,6 @@ class AppContainer(
     private val storageFactory: (String) -> JsonStore = { JsonStore(read = { null }, write = {}, delete = {}) },
     val routeRegistry: LuaRouteRegistry = LuaRouteRegistry(),
 ) {
-    private val console = ConsoleContainer(assetManager, luaEngine, navigator)
     private val dashboard = DashboardContainer(assetManager, luaUiEngine, navigator)
     private var pages = emptyMap<String, LuaContainer>()
 
@@ -56,8 +54,6 @@ class AppContainer(
             routeRegistry.complete(startRoute!!, routes)
         }
     }
-
-    fun console() = console
 
     fun dashboard() = dashboard
 

@@ -26,7 +26,7 @@ sealed interface LuaRoutesState {
 }
 
 class LuaRouteRegistry(
-    private val staticRoutes: Set<String> = setOf(CONSOLE_ROUTE, DASHBOARD_ROUTE),
+    private val staticRoutes: Set<String> = setOf(DASHBOARD_ROUTE),
 ) {
     private val mutableState = MutableStateFlow<LuaRoutesState>(LuaRoutesState.Loading)
     val state: StateFlow<LuaRoutesState> = mutableState.asStateFlow()

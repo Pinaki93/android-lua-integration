@@ -18,9 +18,9 @@ class NavigatorTest {
     @Test fun `navigate emits its route`() = runTest {
         val event = async(UnconfinedTestDispatcher(testScheduler)) { AppNavigator.events.first() }
 
-        AppNavigator.navigate(CONSOLE_ROUTE)
+        AppNavigator.navigate(DASHBOARD_ROUTE)
 
-        assertEquals(NavigationEvent.Navigate(CONSOLE_ROUTE), event.await())
+        assertEquals(NavigationEvent.Navigate(DASHBOARD_ROUTE), event.await())
     }
 
     @Test fun `popBackStack emits a back event`() = runTest {
