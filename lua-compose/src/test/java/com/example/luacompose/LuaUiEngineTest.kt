@@ -18,13 +18,13 @@ class LuaUiEngineTest {
                 ui.row {
                   gap = 12,
                   children = {
-                    ui.card { children = {
+                    ui.card { style = "accent", children = {
                       ui.text { text = "42", style = "metric" },
                       ui.text { text = "users", style = "body" }
                     } }
                   }
                 },
-                ui.button { text = "Refresh", action = "refresh" },
+                ui.button { text = "Refresh", action = "refresh", style = "quiet" },
                 ui.textField { label = "Task", value = state.draft, action = "todo.draft", enabled = false, error = "Required" },
                 ui.checkbox { label = "Done", checked = state.done, action = "todo.toggle.1" }
               }
@@ -44,11 +44,12 @@ class LuaUiEngineTest {
                                     UiNode.Text("42", UiTextStyle.Metric),
                                     UiNode.Text("users"),
                                 ),
+                                UiCardStyle.Accent,
                             ),
                         ),
                         gap = 12,
                     ),
-                    UiNode.Button("Refresh", "refresh"),
+                    UiNode.Button("Refresh", "refresh", style = UiButtonStyle.Quiet),
                     UiNode.TextField("Draft", "Task", "todo.draft", enabled = false, error = "Required"),
                     UiNode.Checkbox(true, "Done", "todo.toggle.1"),
                 ),

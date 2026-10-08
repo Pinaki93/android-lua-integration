@@ -112,10 +112,10 @@ class LuaContainerVm internal constructor(
             is UiInput.TextChanged -> LuaEvent.TextChanged(input.action, input.value)
             is UiInput.CheckedChanged -> LuaEvent.CheckedChanged(input.action, input.checked)
         }
-        if (enqueue(event) && input is UiInput.TextChanged) {
+        if (enqueue(event)) {
             val current = result
             if (current is LuaUiResult.Success) {
-                result = LuaUiResult.Success(current.root.withText(input.action, input.value))
+                result = LuaUiResult.Success(current.root.withInput(input))
             }
         }
     }
@@ -135,10 +135,12 @@ class LuaContainerVm internal constructor(
     private data class QueuedEvent(val revision: Long, val event: LuaEvent)
 }
 
-private fun UiNode.withText(action: String, value: String): UiNode = when (this) {
-    is UiNode.Card -> UiNode.Card(children.map { it.withText(action, value) })
-    is UiNode.Column -> UiNode.Column(children.map { it.withText(action, value) }, gap)
-    is UiNode.Row -> UiNode.Row(children.map { it.withText(action, value) }, gap)
-    is UiNode.TextField -> if (enabled && this.action == action) copy(value = value) else this
+private fun UiNode.withInput(input: UiInput): UiNode = when (this) {
+    is UiNode.Card -> UiNode.Card(children.map { it.withInput(input) }, style)
+    is UiNode.Column -> UiNode.Column(children.map { it.withInput(input) }, gap)
+    is UiNode.Row -> UiNode.Row(children.map { it.withInput(input) }, gap)
+    is UiNode.TextField -> if (enabled && input is UiInput.TextChanged && action == input.action) copy(value = input.value) else this
+    is UiNode.Checkbox -> if (enabled && input is UiInput.CheckedChanged && action == input.action) copy(checked = input.checked) else this
+    is UiNode.ListItem -> if (enabled && input is UiInput.CheckedChanged && toggleAction == input.action) copy(checked = input.checked) else this
     else -> this
 }

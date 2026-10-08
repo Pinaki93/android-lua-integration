@@ -154,25 +154,54 @@ end
 
 local function render()
   local editable = loaded
+  local completed = 0
+  for _, item in ipairs(items) do if item.completed then completed = completed + 1 end end
+  local remaining = #items - completed
+  local add_children = {
+    ui.textField { label = "What needs doing?", value = draft, action = "todo.draft", enabled = editable, error = draft_error, style = "plain" }
+  }
+  if draft ~= "" then
+    add_children[#add_children + 1] = ui.button { text = "Add Task", action = "todo.add", enabled = editable and #items < MAX_ITEMS, style = "orange" }
+  end
   local children = {
-    ui.text { text = "Tasks", style = "title" },
-    ui.text { text = tostring(MAX_ITEMS - #items) .. " spaces left" },
-    ui.textField { label = "What needs doing?", value = draft, action = "todo.draft", enabled = editable, error = draft_error },
-    ui.button { text = "Add task", action = "todo.add", enabled = editable and #items < MAX_ITEMS }
+    ui.text { text = "Today", style = "title" },
+    ui.text { text = "Keep your day clear and focused." },
+    ui.card { style = "orange", children = {
+      ui.column { gap = 6, children = {
+        ui.text { text = tostring(remaining), style = "metric" },
+        ui.text { text = remaining == 1 and "task left to finish" or "tasks left to finish", style = "title" },
+        ui.row { gap = 12, children = {
+          ui.text { text = tostring(completed) .. " completed" },
+          ui.text { text = tostring(MAX_ITEMS - #items) .. " spaces available", style = "label" }
+        } }
+      } }
+    } },
+    ui.card { style = "lightOrange", children = {
+      ui.column { gap = 12, children = add_children }
+    } },
+    ui.text { text = #items == 1 and "1 task" or tostring(#items) .. " tasks", style = "title" }
   }
   if #items >= MAX_ITEMS then children[#children + 1] = ui.text { text = "Your list has reached 100 tasks." } end
   if storage_error then
     children[#children + 1] = ui.text { text = storage_error }
     if not loaded then children[#children + 1] = ui.button { text = "Reload saved tasks", action = "todo.reload" } end
   end
-  if #items == 0 then children[#children + 1] = ui.text { text = "No tasks yet. Add one above." } end
-  for _, item in ipairs(items) do
-    children[#children + 1] = ui.card { children = {
-      ui.checkbox { label = item.title, checked = item.completed, action = "todo.toggle." .. tostring(item.id), enabled = editable },
-      ui.button { text = "Delete task", action = "todo.delete." .. tostring(item.id), enabled = editable }
+  if #items == 0 then children[#children + 1] = ui.card { style = "subtle", children = {
+    ui.column { gap = 6, children = {
+      ui.text { text = "A clear day", style = "title" },
+      ui.text { text = "No tasks yet. Add one above." }
     } }
+  } } end
+  for _, item in ipairs(items) do
+    children[#children + 1] = ui.listItem {
+      text = item.title,
+      checked = item.completed,
+      toggleAction = "todo.toggle." .. tostring(item.id),
+      deleteAction = "todo.delete." .. tostring(item.id),
+      enabled = editable
+    }
   end
-  return ui.column { gap = 16, children = children }
+  return ui.column { gap = 12, children = children }
 end
 
 load()

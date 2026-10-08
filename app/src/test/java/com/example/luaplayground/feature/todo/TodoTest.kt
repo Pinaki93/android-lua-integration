@@ -39,6 +39,20 @@ class TodoTest {
         assertEquals(text, vm.result.field().value)
     }
 
+    @Test fun `toggling a task updates immediately`() = runTest(mainDispatcherRule.dispatcher) {
+        val memory = MemoryStore(
+            """{"version":1,"nextId":2,"items":[{"id":1,"title":"Task","completed":false}]}"""
+        )
+        val vm = LuaContainerVm(java.io.File("../lua/todo.lua").readText(), { memory.store }, mainDispatcherRule.dispatcher)
+        advanceUntilIdle()
+
+        vm.input(UiInput.CheckedChanged("todo.toggle.1", true))
+
+        assertTrue(vm.result.checkboxes().single().checked)
+        advanceUntilIdle()
+        assertTrue(vm.result.checkboxes().single().checked)
+    }
+
     @Test fun `typing then adding uses the complete text and clears the field`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
         val vm = LuaContainerVm(java.io.File("../lua/todo.lua").readText(), { memory.store }, mainDispatcherRule.dispatcher)
@@ -92,10 +106,41 @@ class TodoTest {
         assertTrue(restored.dispatch(LuaEvent.Action("todo.delete.1")).texts().contains("No tasks yet. Add one above."))
     }
 
+    @Test fun `layout uses warm summary cards and list items with icon actions`() {
+        val memory = MemoryStore(
+            """{"version":1,"nextId":3,"items":[{"id":1,"title":"Done","completed":true},{"id":2,"title":"Next","completed":false}]}"""
+        )
+
+        val result = session(memory).start()
+        val root = (result as LuaUiResult.Success).root as UiNode.Column
+        val cards = root.children.filterIsInstance<UiNode.Card>()
+        val listItems = root.children.filterIsInstance<UiNode.ListItem>()
+
+        assertEquals(12, root.gap)
+        assertTrue(result.texts().containsAll(listOf("1", "task left to finish", "1 completed", "98 spaces available")))
+        assertEquals(com.example.luacompose.UiCardStyle.Orange, cards[0].style)
+        assertEquals(com.example.luacompose.UiCardStyle.LightOrange, cards[1].style)
+        assertEquals(
+            listOf("1 completed", "98 spaces available"),
+            cards[0].children.flatMap { it.flatten() }.filterIsInstance<UiNode.Row>().single().children
+                .filterIsInstance<UiNode.Text>().map { it.text },
+        )
+        assertEquals(listOf("Done", "Next"), listItems.map { it.text })
+        assertEquals(listOf("todo.delete.1", "todo.delete.2"), listItems.map { it.deleteAction })
+        assertTrue(result.nodes().filterIsInstance<UiNode.Button>().none { it.text == "Add Task" })
+
+        val typing = session(memory).apply { start() }.dispatch(LuaEvent.TextChanged("todo.draft", "New task"))
+        assertEquals(com.example.luacompose.UiTextFieldStyle.Plain, typing.field().style)
+        assertTrue(typing.nodes().filterIsInstance<UiNode.Button>().any {
+            it.text == "Add Task" && it.style == com.example.luacompose.UiButtonStyle.Orange
+        })
+    }
+
     @Test fun `draft validation trims blanks and counts unicode code points`() {
         val memory = MemoryStore()
         val session = session(memory)
-        session.start()
+        assertTrue(session.start().nodes().filterIsInstance<UiNode.Button>().none { it.text == "Add Task" })
+        session.dispatch(LuaEvent.TextChanged("todo.draft", "   "))
         val blank = session.dispatch(LuaEvent.Action("todo.add"))
         assertTrue(blank.texts().contains("Enter a task title."))
         assertEquals(0, memory.writes)
@@ -148,7 +193,7 @@ class TodoTest {
         val session = session(memory)
         val result = session.start()
         assertEquals(100, result.checkboxes().size)
-        assertTrue(result.texts().contains("0 spaces left"))
+        assertTrue(result.texts().containsAll(listOf("0 completed", "0 spaces available")))
         session.dispatch(LuaEvent.TextChanged("todo.draft", "Extra"))
         session.dispatch(LuaEvent.Action("todo.add"))
         assertEquals(0, memory.writes)
@@ -184,13 +229,14 @@ class TodoTest {
         when (it) {
             is UiNode.Button -> listOf(it.text)
             is UiNode.Checkbox -> listOf(it.label)
+            is UiNode.ListItem -> listOf(it.text)
             is UiNode.Text -> listOf(it.text)
             is UiNode.TextField -> listOf(it.label, it.value) + listOfNotNull(it.error)
             else -> emptyList()
         }
     }
 
-    private fun LuaUiResult.checkboxes() = nodes().filterIsInstance<UiNode.Checkbox>()
+    private fun LuaUiResult.checkboxes() = nodes().filterIsInstance<UiNode.ListItem>()
 
     private fun LuaUiResult.field() = nodes().filterIsInstance<UiNode.TextField>().single()
 

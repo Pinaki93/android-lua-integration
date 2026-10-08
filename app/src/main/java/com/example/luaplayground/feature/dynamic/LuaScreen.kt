@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -43,13 +41,6 @@ fun LuaFeature(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (showBack) {
-            OutlinedButton(onClick = { scope.launch { container.navigator.popBackStack() } }) {
-                Text(
-                    "Back"
-                )
-            }
-        }
         Box(Modifier
             .fillMaxWidth()
             .weight(1f), contentAlignment = Alignment.Center) {

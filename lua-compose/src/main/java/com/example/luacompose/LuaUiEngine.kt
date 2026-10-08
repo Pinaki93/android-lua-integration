@@ -113,7 +113,7 @@ class LuaUiEngine {
     }
 
     internal fun uiTable() = FrozenTable().apply {
-        listOf("column", "row", "text", "card", "button", "textField", "checkbox").forEach { type ->
+        listOf("column", "row", "text", "card", "button", "textField", "checkbox", "listItem").forEach { type ->
             add(LuaValue.valueOf(type), NodeConstructor(type))
         }
         freeze()
@@ -175,21 +175,22 @@ class LuaUiEngine {
                         UiNode.Text(text(table, "text", path), style(table, path))
                     }
                     "card" -> {
-                        fields(table, path, "type", "children")
-                        UiNode.Card(children(table, path, depth))
+                        fields(table, path, "type", "children", "style")
+                        UiNode.Card(children(table, path, depth), cardStyle(table, path))
                     }
                     "button" -> {
-                        fields(table, path, "type", "text", "action", "enabled")
-                        UiNode.Button(text(table, "text", path), action(table, path), enabled(table, path))
+                        fields(table, path, "type", "text", "action", "enabled", "style")
+                        UiNode.Button(text(table, "text", path), action(table, path), enabled(table, path), buttonStyle(table, path))
                     }
                     "textField" -> {
-                        fields(table, path, "type", "value", "label", "action", "enabled", "error")
+                        fields(table, path, "type", "value", "label", "action", "enabled", "error", "style")
                         UiNode.TextField(
                             value = text(table, "value", path),
                             label = label(table, path),
                             action = action(table, path),
                             enabled = enabled(table, path),
                             error = optionalText(table, "error", path),
+                            style = textFieldStyle(table, path),
                         )
                     }
                     "checkbox" -> {
@@ -198,6 +199,16 @@ class LuaUiEngine {
                             checked = boolean(table, "checked", path),
                             label = label(table, path),
                             action = action(table, path),
+                            enabled = enabled(table, path),
+                        )
+                    }
+                    "listItem" -> {
+                        fields(table, path, "type", "text", "checked", "toggleAction", "deleteAction", "enabled")
+                        UiNode.ListItem(
+                            text = text(table, "text", path),
+                            checked = boolean(table, "checked", path),
+                            toggleAction = namedAction(table, "toggleAction", path),
+                            deleteAction = namedAction(table, "deleteAction", path),
                             enabled = enabled(table, path),
                         )
                     }
@@ -250,12 +261,57 @@ class LuaUiEngine {
                 "body" -> UiTextStyle.Body
                 "title" -> UiTextStyle.Title
                 "metric" -> UiTextStyle.Metric
+                "label" -> UiTextStyle.Label
                 else -> fail(LuaUiError.Kind.Validation, "Unknown style '$style' at $path.")
+            }
+        }
+
+        private fun cardStyle(table: LuaTable, path: String): UiCardStyle {
+            val value = table.get("style")
+            if (value.isnil()) return UiCardStyle.Default
+            if (value.type() != LuaValue.TSTRING) fail(LuaUiError.Kind.Validation, "Field 'style' at $path must be a string.")
+            return when (val style = value.tojstring()) {
+                "default" -> UiCardStyle.Default
+                "accent" -> UiCardStyle.Accent
+                "subtle" -> UiCardStyle.Subtle
+                "outlined" -> UiCardStyle.Outlined
+                "orange" -> UiCardStyle.Orange
+                "lightOrange" -> UiCardStyle.LightOrange
+                else -> fail(LuaUiError.Kind.Validation, "Unknown card style '$style' at $path.")
+            }
+        }
+
+        private fun buttonStyle(table: LuaTable, path: String): UiButtonStyle {
+            val value = table.get("style")
+            if (value.isnil()) return UiButtonStyle.Primary
+            if (value.type() != LuaValue.TSTRING) fail(LuaUiError.Kind.Validation, "Field 'style' at $path must be a string.")
+            return when (val style = value.tojstring()) {
+                "primary" -> UiButtonStyle.Primary
+                "orange" -> UiButtonStyle.Orange
+                "quiet" -> UiButtonStyle.Quiet
+                else -> fail(LuaUiError.Kind.Validation, "Unknown button style '$style' at $path.")
+            }
+        }
+
+        private fun textFieldStyle(table: LuaTable, path: String): UiTextFieldStyle {
+            val value = table.get("style")
+            if (value.isnil()) return UiTextFieldStyle.Outlined
+            if (value.type() != LuaValue.TSTRING) fail(LuaUiError.Kind.Validation, "Field 'style' at $path must be a string.")
+            return when (val style = value.tojstring()) {
+                "outlined" -> UiTextFieldStyle.Outlined
+                "plain" -> UiTextFieldStyle.Plain
+                else -> fail(LuaUiError.Kind.Validation, "Unknown text field style '$style' at $path.")
             }
         }
 
         private fun action(table: LuaTable, path: String): String {
             val action = requiredString(table, "action", path)
+            if (!ACTION.matches(action)) fail(LuaUiError.Kind.Validation, "Unknown action '$action' at $path.")
+            return action
+        }
+
+        private fun namedAction(table: LuaTable, field: String, path: String): String {
+            val action = requiredString(table, field, path)
             if (!ACTION.matches(action)) fail(LuaUiError.Kind.Validation, "Unknown action '$action' at $path.")
             return action
         }

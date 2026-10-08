@@ -61,5 +61,6 @@ class DashboardTest {
         is UiNode.Text -> listOf(text)
         is UiNode.TextField -> listOf(label, value) + listOfNotNull(error)
         is UiNode.Checkbox -> listOf(label)
+        is UiNode.ListItem -> listOf(text)
     }
 }

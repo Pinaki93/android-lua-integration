@@ -20,9 +20,12 @@ class UiModelTest {
             UiNode.Column(listOf(title, row, button, field, checkbox), gap = 16),
         )
         assertEquals(UiTextStyle.Body, UiNode.Text("Body").style)
+        assertEquals(UiCardStyle.Default, UiNode.Card(emptyList()).style)
         assertEquals(0, UiNode.Row(emptyList()).gap)
         assertEquals(true, UiNode.Button("Go", "go").enabled)
+        assertEquals(UiButtonStyle.Primary, UiNode.Button("Go", "go").style)
         assertEquals(true, UiNode.TextField("", "Name", "name").enabled)
+        assertEquals(UiTextFieldStyle.Outlined, UiNode.TextField("", "Name", "name").style)
         assertEquals(true, UiNode.Checkbox(false, "Done", "done").enabled)
     }
 
