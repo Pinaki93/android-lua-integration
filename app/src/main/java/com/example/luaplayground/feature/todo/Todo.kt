@@ -3,6 +3,7 @@ package com.example.luaplayground.feature.todo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,9 +12,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -50,6 +51,8 @@ class TodoContainer(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     fun createVm() = LuaSessionVm(assets.readTodo(), store, io)
+
+    fun warmUp() = LuaSession(assets.readTodo(), store).use { it.start() }
 }
 
 class LuaSessionVm private constructor(
@@ -65,10 +68,13 @@ class LuaSessionVm private constructor(
 
     var result by mutableStateOf<LuaUiResult>(LuaUiResult.Success(UiNode.Text("Loading…")))
         private set
+    var isLoading by mutableStateOf(true)
+        private set
 
     init {
         viewModelScope.launch {
             result = withContext(io) { session.start() }
+            isLoading = false
             for (queued in events) {
                 val next = withContext(io) { session.dispatch(queued.event) }
                 if (queued.revision == revision) result = next
@@ -126,11 +132,13 @@ fun TodoFeature(container: TodoContainer) {
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .imePadding()
-            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         OutlinedButton(onClick = { scope.launch { container.navigator.popBackStack() } }) { Text("Back to playground") }
-        LuaUi(vm.result, vm::action, Modifier.fillMaxWidth(), vm::input)
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            if (vm.isLoading) CircularProgressIndicator()
+            else LuaUi(vm.result, vm::action, Modifier.fillMaxSize(), vm::input, lazy = true)
+        }
     }
 }

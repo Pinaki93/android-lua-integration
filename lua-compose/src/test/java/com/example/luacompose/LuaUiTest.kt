@@ -67,4 +67,13 @@ class LuaUiTest {
         assertEquals("Unable to render UI.", failure.displayText())
         assertFalse(failure.displayText().contains(detail))
     }
+
+    @Test
+    fun `lazy rendering applies only to enabled root columns`() {
+        val column = UiNode.Column(listOf(UiNode.Text("item")), gap = 8)
+
+        assertEquals(column, lazyRoot(column, true))
+        assertEquals(null, lazyRoot(column, false))
+        assertEquals(null, lazyRoot(UiNode.Text("item"), true))
+    }
 }

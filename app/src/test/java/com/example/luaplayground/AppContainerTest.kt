@@ -4,6 +4,7 @@ import com.example.luacompose.JsonStore
 import com.example.luaplayground.feature.playground.PlaygroundVm
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppContainerTest {
@@ -43,5 +44,27 @@ class AppContainerTest {
         val app = AppContainer(assets, engine, AppNavigator, todoStore = store)
 
         assertSame(store, app.todoStore)
+    }
+
+    @Test fun `start schedules the app Lua script`() {
+        var scheduled: (() -> Unit)? = null
+        var todoReads = 0
+        val app = AppContainer(
+            assetManager = AssetManager(
+                listFiles = { emptyArray() },
+                readFile = { error("unexpected console read: $it") },
+                readAppFile = { "started = true".encodeToByteArray() },
+                readTodoFile = {
+                    todoReads++
+                    java.io.File("build/generated/luaAssets/todo.luac").readBytes()
+                },
+            ),
+        )
+
+        app.start { scheduled = it }
+
+        assertTrue(scheduled != null)
+        scheduled!!()
+        assertEquals(1, todoReads)
     }
 }

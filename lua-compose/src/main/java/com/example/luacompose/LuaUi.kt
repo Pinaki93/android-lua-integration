@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.Checkbox
@@ -28,12 +30,28 @@ fun LuaUi(
     onAction: (String) -> Unit,
     modifier: Modifier = Modifier,
     onInput: (UiInput) -> Unit = {},
+    lazy: Boolean = false,
 ) {
     when (result) {
-        is LuaUiResult.Success -> LuaNode(result.root, onAction, onInput, modifier)
+        is LuaUiResult.Success -> {
+            val root = lazyRoot(result.root, lazy)
+            if (root != null) {
+                LazyColumn(
+                    modifier = modifier,
+                    verticalArrangement = Arrangement.spacedBy(root.gap.toDp()),
+                ) {
+                    items(root.children) { LuaNode(it, onAction, onInput) }
+                }
+            } else {
+                LuaNode(result.root, onAction, onInput, modifier)
+            }
+        }
         is LuaUiResult.Failure -> Text(result.displayText(), modifier)
     }
 }
+
+internal fun lazyRoot(node: UiNode, enabled: Boolean): UiNode.Column? =
+    (node as? UiNode.Column).takeIf { enabled }
 
 @Composable
 private fun LuaNode(

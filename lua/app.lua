@@ -1,0 +1,1 @@
+-- Initializes the Lua runtime during application startup.

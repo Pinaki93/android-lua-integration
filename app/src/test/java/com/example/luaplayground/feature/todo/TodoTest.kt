@@ -23,7 +23,9 @@ class TodoTest {
     @Test fun `rapid typing updates immediately and keeps the newest value`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
         val vm = LuaSessionVm(java.io.File("build/generated/luaAssets/todo.luac").readBytes(), memory.store, mainDispatcherRule.dispatcher)
+        assertTrue(vm.isLoading)
         advanceUntilIdle()
+        assertFalse(vm.isLoading)
 
         val text = "abcdefghijklmnop"
         for (length in 1..text.length) {

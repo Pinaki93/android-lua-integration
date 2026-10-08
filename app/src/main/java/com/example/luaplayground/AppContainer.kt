@@ -24,6 +24,13 @@ class AppContainer(
 
     constructor(assets: AndroidAssetManager) : this(AssetManager(assets))
 
+    fun start(runInBackground: (() -> Unit) -> Unit = { Thread(it, "lua-app").start() }) {
+        runInBackground {
+            luaEngine.execute(assetManager.readApp(), name = "app.luac")
+            todo.warmUp()
+        }
+    }
+
     fun console() = console
 
     fun dashboard() = dashboard

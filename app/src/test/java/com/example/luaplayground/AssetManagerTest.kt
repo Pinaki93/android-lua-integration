@@ -40,6 +40,16 @@ class AssetManagerTest {
         assertEquals("dashboard", assets.readDashboard().decodeToString())
     }
 
+    @Test fun `app reads its startup asset`() {
+        val assets = AssetManager(
+            listFiles = { emptyArray() },
+            readFile = { error("unexpected console read: $it") },
+            readAppFile = { "app".encodeToByteArray() },
+        )
+
+        assertEquals("app", assets.readApp().decodeToString())
+    }
+
     @Test fun `todo reads its app asset`() {
         val assets = AssetManager(
             listFiles = { emptyArray() },
