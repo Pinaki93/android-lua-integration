@@ -50,14 +50,35 @@ class TodoContainer(
     private val store: JsonStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    fun createVm() = LuaSessionVm(assets.readTodo(), store, io)
+    private var prepared: Pair<LuaSession, LuaUiResult>? = null
+    private var preparingAllowed = true
 
-    fun warmUp() = LuaSession(assets.readTodo(), store).use { it.start() }
+    fun createVm(): LuaSessionVm {
+        val ready = synchronized(this) {
+            preparingAllowed = false
+            prepared.also { prepared = null }
+        }
+        return ready?.let { LuaSessionVm(it.first, io, it.second) }
+            ?: LuaSessionVm(assets.readTodo(), store, io)
+    }
+
+    fun warmUp() {
+        val session = LuaSession(assets.readTodo(), store)
+        val ready = session.start()
+        val kept = synchronized(this) {
+            if (preparingAllowed && prepared == null) {
+                prepared = session to ready
+                true
+            } else false
+        }
+        if (!kept) session.close()
+    }
 }
 
-class LuaSessionVm private constructor(
+class LuaSessionVm internal constructor(
     private val session: LuaSession,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    initial: LuaUiResult? = null,
 ) : ViewModel() {
     constructor(script: ByteArray, store: JsonStore, io: CoroutineDispatcher = Dispatchers.IO) :
         this(LuaSession(script, store), io)
@@ -66,15 +87,17 @@ class LuaSessionVm private constructor(
     private val events = Channel<QueuedEvent>(Channel.UNLIMITED)
     private var revision = 0L
 
-    var result by mutableStateOf<LuaUiResult>(LuaUiResult.Success(UiNode.Text("Loading…")))
+    var result by mutableStateOf(initial ?: LuaUiResult.Success(UiNode.Text("Loading…")))
         private set
-    var isLoading by mutableStateOf(true)
+    var isLoading by mutableStateOf(initial == null)
         private set
 
     init {
         viewModelScope.launch {
-            result = withContext(io) { session.start() }
-            isLoading = false
+            if (initial == null) {
+                result = withContext(io) { session.start() }
+                isLoading = false
+            }
             for (queued in events) {
                 val next = withContext(io) { session.dispatch(queued.event) }
                 if (queued.revision == revision) result = next

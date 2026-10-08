@@ -2,12 +2,17 @@ package com.example.luaplayground
 
 import com.example.luacompose.JsonStore
 import com.example.luaplayground.feature.playground.PlaygroundVm
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppContainerTest {
+    @get:Rule val mainDispatcherRule = MainDispatcherRule()
+
     private val assets = AssetManager(
         listFiles = { arrayOf("hello.luac") },
         readFile = { "print('hello')".encodeToByteArray() },
@@ -66,5 +71,9 @@ class AppContainerTest {
         assertTrue(scheduled != null)
         scheduled!!()
         assertEquals(1, todoReads)
+
+        val todo = app.todo().createVm()
+        assertEquals(1, todoReads)
+        assertTrue(!todo.isLoading)
     }
 }
