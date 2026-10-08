@@ -13,54 +13,29 @@
 
 ## What it does
 
-- Renders a reactive dashboard described by a constrained Lua UI DSL
-- Runs a persistent Lua todo page with app-private JSON storage
-- Registers bundled Lua pages and the start destination from `lua/app.lua`
-- Uses Jetpack Compose throughout, with Lua isolated behind explicit capabilities
+This is a playground of sorts to orchestrate UI and business logic via lua scripting instead of native Kotlin code.
 
-## Lua Compose screens
+## Lua as an alternative to Server Driven UI
+### 
+Lua presents an alternative to Server Driven UI. Instead of syncing a UI tree and coordinating actions through APIs or complex dynamic configurations, we can instead download Lua scripts which would orchestrate the UI. This gives us an option to change business logic and UI on the fly without an App Release. You can
+ - Deliver new features
+ - Deliver bug fixes faster
+ - Deliver new themes
+ - Perform A/B on different flows with confidence
+... and much more, without the hassles of Play Store review cycles.
 
-`:lua-compose` is an independent Android library. Stateless screens pass a script and read-only state map to `LuaUiEngine`; stateful screens use one persistent `LuaSession`. Both return `LuaUiResult`, and `LuaUi` renders only the validated tree.
+### Let Lua orchestrate, Delegate Heavy-lifting to Native Stack
+Under the hood, let the native stack (written in Kotlin + Compose for this project) do the heavy-lifting. Let Kotlin 
+- read files from storage
+- Interpret UI trees and draw the actual UI
+- Parse JSON
+- Perform Network operations
+... All this while Lua handles the orchestration of UI and UI events.
 
-The supported DSL includes columns, rows, text, cards, buttons, text fields, and checkboxes. The shipped [`dashboard.lua`](lua/dashboard.lua) demonstrates read-only Kotlin state and named actions:
+## What this project contains
+- A small (read incomplete) lua compatibility wrapper over compose so that Lua can define UI trees while the native stack can render it
+- A hook for app startup in Lua (App.lua) which registers which screens are to be shown
+- A generic container for lua screen which provides other utilities such as storage
+- Screens built using a JSON file as a backend for storing data
+- A gradle task that compiles lua into luac files which are then dynamically loaded by the app 
 
-```kotlin
-val result = LuaUiEngine().evaluate(script, state)
-LuaUi(result, onAction = ::dispatch)
-```
-
-Compose scripts receive safe base functions and supported `ui` constructors. Persistent sessions additionally receive only explicitly supplied navigation and storage capabilities. They cannot access Java reflection, Android APIs, arbitrary files, network, processes, modules, debug functions, or dynamic loading.
-
-Scripts are limited to 500 KiB. Invalid fields or types, cycles, invalid actions, runtime failures, and resource-limit violations produce a deterministic `LuaUiResult.Failure` rather than a partial tree.
-
-## Persistent todo page
-
-The shipped [`todo.lua`](lua/todo.lua) owns its draft, validation, item mutations, messages, rendering, and persistence decisions. It uses an app-private JSON document through the narrow storage API:
-
-```lua
-local store = storage.open("todos.json")
-```
-
-Storage names must be safe `.json` basenames. Documents are UTF-8 JSON, capped at 256 KiB, and atomically replaced. Corrupt data blocks mutation instead of being overwritten, and storage errors never expose paths or document contents.
-
-## Lua page navigation
-
-The startup script registers destinations atomically:
-
-```lua
-registerRoute("playground", "playground.luac")
-registerRoute("todo", "todo.luac")
-setStartRoute("playground")
-```
-
-Routes support literal path segments and `{name}` placeholders. Page scripts receive decoded placeholders through `navigation.arguments`, and can call `navigation.navigate("item/42")` or `navigation.back()`. Invalid startup scripts, route patterns, destinations, or assets produce a generic startup error without publishing a partial graph.
-
-## Run and test
-
-Requirements are Android Studio with Android SDK 37 and JDK 17.
-
-```sh
-./gradlew testDebugUnitTest assembleDebug
-```
-
-The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The unit suite uses plain JUnit and fakes; no emulator is required.
