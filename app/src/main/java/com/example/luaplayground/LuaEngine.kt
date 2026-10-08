@@ -33,6 +33,33 @@ class LuaEngine {
         globals.load(ByteArrayInputStream(script), name, "bt", globals)
     }
 
+    fun executeApp(
+        script: ByteArray,
+        registerRoute: (String, String) -> Unit,
+        setStartRoute: (String) -> Unit,
+    ) = execute("") { globals ->
+        globals.set("registerRoute", object : VarArgFunction() {
+            override fun invoke(arguments: Varargs): Varargs {
+                if (arguments.narg() != 2 || arguments.arg(1).type() != LuaValue.TSTRING ||
+                    arguments.arg(2).type() != LuaValue.TSTRING) {
+                    throw LuaError("registerRoute expects route and script strings")
+                }
+                registerRoute(arguments.arg(1).tojstring(), arguments.arg(2).tojstring())
+                return LuaValue.NONE
+            }
+        })
+        globals.set("setStartRoute", object : VarArgFunction() {
+            override fun invoke(arguments: Varargs): Varargs {
+                if (arguments.narg() != 1 || arguments.arg1().type() != LuaValue.TSTRING) {
+                    throw LuaError("setStartRoute expects one route string")
+                }
+                setStartRoute(arguments.arg1().tojstring())
+                return LuaValue.NONE
+            }
+        })
+        globals.load(ByteArrayInputStream(script), "app.luac", "bt", globals)
+    }
+
     private fun execute(input: String, load: (Globals) -> LuaValue): LuaResult {
         val output = StringBuilder()
         val globals = globals(BufferedReader(StringReader(input)), output)

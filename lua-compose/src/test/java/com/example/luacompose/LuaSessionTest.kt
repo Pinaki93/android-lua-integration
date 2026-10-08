@@ -103,6 +103,63 @@ class LuaSessionTest {
         assertTrue(session.dispatch(LuaEvent.Action("go")) is LuaUiResult.Failure)
     }
 
+    @Test fun `storage factory opens the requested frozen store`() {
+        var opened = ""
+        var bytes: ByteArray? = null
+        val session = LuaSession(
+            """
+            local store = storage.open("feature.json")
+            store.create({enabled = true})
+            local value = store.read()
+            local frozen = not pcall(function() storage.open = nil end)
+            return {
+              render = function() return ui.text { text = tostring(value.enabled) .. tostring(frozen) } end,
+              onEvent = function() end
+            }
+            """.trimIndent(),
+            storage = { name ->
+                opened = name
+                JsonStore({ bytes }, { bytes = it }, { bytes = null })
+            },
+        )
+
+        val result = session.start()
+        assertTrue(result.toString(), result is LuaUiResult.Success)
+        assertEquals(UiNode.Text("truetrue"), result.root())
+        assertEquals("feature.json", opened)
+    }
+
+    @Test fun `navigation exposes frozen arguments and forwards commands`() {
+        val commands = mutableListOf<String>()
+        val session = LuaSession(
+            """
+            local frozen = not pcall(function() navigation.arguments.id = "changed" end)
+            return {
+              render = function() return ui.button { text = navigation.arguments.id .. tostring(frozen), action = "go" } end,
+              onEvent = function() navigation.navigate("detail/42"); navigation.back() end
+            }
+            """.trimIndent(),
+            storage = { JsonStore({ null }, {}, {}) },
+            navigation = LuaNavigation(
+                arguments = mapOf("id" to "42"),
+                navigate = { commands += "navigate:$it" },
+                back = { commands += "back" },
+            ),
+        )
+
+        assertEquals("42true", (session.start().root() as UiNode.Button).text)
+        session.dispatch(LuaEvent.Action("go"))
+        assertEquals(listOf("navigate:detail/42", "back"), commands)
+    }
+
+    @Test fun `page capabilities are absent unless explicitly supplied`() {
+        val session = LuaSession(
+            "return {render=function() return ui.text{text=tostring(storage)..tostring(navigation)} end,onEvent=function() end}",
+        )
+
+        assertEquals(UiNode.Text("nilnil"), session.start().root())
+    }
+
     private fun LuaUiResult.root() = (this as LuaUiResult.Success).root
     private fun LuaUiResult.field() = root() as UiNode.TextField
 }

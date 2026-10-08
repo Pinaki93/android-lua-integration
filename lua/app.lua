@@ -1,1 +1,3 @@
--- Initializes the Lua runtime during application startup.
+registerRoute("playground", "playground.luac")
+registerRoute("todo", "todo.luac")
+setStartRoute("playground")

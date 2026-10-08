@@ -50,13 +50,13 @@ class AssetManagerTest {
         assertEquals("app", assets.readApp().decodeToString())
     }
 
-    @Test fun `todo reads its app asset`() {
+    @Test fun `page reads a nested app asset`() {
         val assets = AssetManager(
             listFiles = { emptyArray() },
             readFile = { "console:$it".encodeToByteArray() },
-            readTodoFile = { "todo".encodeToByteArray() },
+            readPageFile = { "page:$it".encodeToByteArray() },
         )
 
-        assertEquals("todo", assets.readTodo().decodeToString())
+        assertEquals("page:features/todo.luac", assets.readPage("features/todo.luac").decodeToString())
     }
 }

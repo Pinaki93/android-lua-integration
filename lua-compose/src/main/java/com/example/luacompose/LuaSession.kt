@@ -30,13 +30,25 @@ sealed interface LuaEvent {
     data class CheckedChanged(override val action: String, val checked: Boolean) : LuaEvent
 }
 
+data class LuaNavigation(
+    val arguments: Map<String, String> = emptyMap(),
+    val navigate: (String) -> Unit,
+    val back: () -> Unit,
+)
+
 class LuaSession private constructor(
     private val bytecode: ByteArray?,
     private val source: String?,
     private val store: JsonStore? = null,
+    private val storage: ((String) -> JsonStore)? = null,
+    private val navigation: LuaNavigation? = null,
 ) : AutoCloseable {
-    constructor(script: ByteArray, store: JsonStore? = null) : this(script, null, store)
-    constructor(script: String, store: JsonStore? = null) : this(null, script, store)
+    constructor(script: ByteArray, store: JsonStore? = null) : this(script, null, store, null, null)
+    constructor(script: String, store: JsonStore? = null) : this(null, script, store, null, null)
+    constructor(script: ByteArray, storage: (String) -> JsonStore, navigation: LuaNavigation? = null) :
+        this(script, null, null, storage, navigation)
+    constructor(script: String, storage: (String) -> JsonStore, navigation: LuaNavigation? = null) :
+        this(null, script, null, storage, navigation)
     private var globals: Globals? = null
     private var render: LuaFunction? = null
     private var onEvent: LuaFunction? = null
@@ -60,6 +72,8 @@ class LuaSession private constructor(
             set("package", LuaValue.NIL)
         }
         store?.let { environment.set("store", storeTable(it)) }
+        storage?.let { environment.set("storage", storageTable(it)) }
+        navigation?.let { environment.set("navigation", navigationTable(it)) }
         val chunk = try {
             source?.let { environment.load(it, "ui.lua") }
                 ?: environment.load(ByteArrayInputStream(bytecode!!), "ui.luac", "b", environment)
@@ -164,6 +178,50 @@ class LuaSession private constructor(
         add(LuaValue.valueOf("read"), StoreFunction(0) { value.read()?.let(::decode) ?: LuaValue.NIL })
         add(LuaValue.valueOf("update"), StoreFunction(1) { value.update(encode(it.arg1())); LuaValue.TRUE })
         add(LuaValue.valueOf("delete"), StoreFunction(0) { value.delete(); LuaValue.TRUE })
+        freeze()
+    }
+
+    private fun storageTable(factory: (String) -> JsonStore) = LuaUiEngine.FrozenTable().apply {
+        add(LuaValue.valueOf("open"), object : VarArgFunction() {
+            override fun invoke(args: Varargs): Varargs {
+                if (args.narg() != 1 || args.arg1().type() != LuaValue.TSTRING) throw LuaError("storage: invalid argument")
+                return try {
+                    storeTable(factory(args.arg1().tojstring()))
+                } catch (_: Exception) {
+                    throw LuaError("storage: unavailable")
+                }
+            }
+        })
+        freeze()
+    }
+
+    private fun navigationTable(value: LuaNavigation) = LuaUiEngine.FrozenTable().apply {
+        add(LuaValue.valueOf("arguments"), LuaUiEngine.FrozenTable().apply {
+            value.arguments.forEach { (key, argument) -> add(LuaValue.valueOf(key), LuaValue.valueOf(argument)) }
+            freeze()
+        })
+        add(LuaValue.valueOf("navigate"), object : VarArgFunction() {
+            override fun invoke(args: Varargs): Varargs {
+                if (args.narg() != 1 || args.arg1().type() != LuaValue.TSTRING) throw LuaError("navigation: invalid argument")
+                try {
+                    value.navigate(args.arg1().tojstring())
+                } catch (_: Exception) {
+                    throw LuaError("navigation: unavailable")
+                }
+                return LuaValue.NONE
+            }
+        })
+        add(LuaValue.valueOf("back"), object : VarArgFunction() {
+            override fun invoke(args: Varargs): Varargs {
+                if (args.narg() != 0) throw LuaError("navigation: invalid argument")
+                try {
+                    value.back()
+                } catch (_: Exception) {
+                    throw LuaError("navigation: unavailable")
+                }
+                return LuaValue.NONE
+            }
+        })
         freeze()
     }
 

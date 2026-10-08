@@ -8,12 +8,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.luacompose.JsonStore
 import com.example.luacompose.LuaEvent
+import com.example.luacompose.LuaNavigation
 import com.example.luacompose.LuaSession
 import com.example.luacompose.LuaUiResult
 import com.example.luacompose.UiInput
 import com.example.luacompose.UiNode
 import com.example.luaplayground.Navigator
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -23,46 +25,65 @@ import kotlinx.coroutines.withContext
 class LuaContainer(
     private val script: () -> ByteArray,
     val navigator: Navigator,
-    private val store: JsonStore? = null,
+    private val storage: (String) -> JsonStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    private var prepared: Pair<LuaSession, LuaUiResult>? = null
-    private var preparingAllowed = true
-
-    fun createVm(): LuaContainerVm {
-        val ready = synchronized(this) {
-            preparingAllowed = false
-            prepared.also { prepared = null }
-        }
-        return ready?.let { LuaContainerVm(it.first, io, it.second) }
-            ?: LuaContainerVm(script(), store, io)
-    }
-
-    fun warmUp() {
-        val session = LuaSession(script(), store)
-        val ready = session.start()
-        val kept = synchronized(this) {
-            if (preparingAllowed && prepared == null) {
-                prepared = session to ready
-                true
-            } else false
-        }
-        if (!kept) session.close()
-    }
+    fun createVm(arguments: Map<String, String> = emptyMap()) =
+        LuaContainerVm(
+            { scope ->
+                LuaSession(
+                    script(),
+                    storage,
+                    LuaNavigation(
+                        arguments,
+                        navigate = { scope.launch { navigator.navigate(it) } },
+                        back = { scope.launch { navigator.popBackStack() } },
+                    ),
+                )
+            },
+            io,
+        )
 }
 
 class LuaContainerVm internal constructor(
-    private val session: LuaSession,
+    private val sessionFactory: (CoroutineScope) -> LuaSession,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     initial: LuaUiResult? = null,
 ) : ViewModel() {
-    constructor(script: ByteArray, store: JsonStore? = null, io: CoroutineDispatcher = Dispatchers.IO) :
-        this(LuaSession(script, store), io)
-    constructor(script: String, store: JsonStore? = null, io: CoroutineDispatcher = Dispatchers.IO) :
-        this(LuaSession(script, store), io)
+    internal constructor(session: LuaSession, io: CoroutineDispatcher = Dispatchers.IO, initial: LuaUiResult? = null) :
+        this({ session }, io, initial)
+
+    constructor(
+        script: ByteArray,
+        store: JsonStore? = null,
+        io: CoroutineDispatcher = Dispatchers.IO
+    ) :
+            this(LuaSession(script, store), io)
+
+    constructor(
+        script: String,
+        store: JsonStore? = null,
+        io: CoroutineDispatcher = Dispatchers.IO
+    ) :
+            this(LuaSession(script, store), io)
+
+    constructor(
+        script: ByteArray,
+        storage: (String) -> JsonStore,
+        io: CoroutineDispatcher = Dispatchers.IO
+    ) :
+            this(LuaSession(script, storage), io)
+
+    constructor(
+        script: String,
+        storage: (String) -> JsonStore,
+        io: CoroutineDispatcher = Dispatchers.IO
+    ) :
+            this(LuaSession(script, storage), io)
 
     private val events = Channel<QueuedEvent>(Channel.UNLIMITED)
     private var revision = 0L
+    private val session by lazy(LazyThreadSafetyMode.NONE) { sessionFactory(viewModelScope) }
 
     var result by mutableStateOf(initial ?: LuaUiResult.Success(UiNode.Text("Loading…")))
         private set

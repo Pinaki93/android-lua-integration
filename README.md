@@ -22,6 +22,7 @@ Run bundled Lua 5.2 scripts in a clean Jetpack Compose app—with line-based inp
 - Reports syntax and runtime errors without losing earlier output
 - Runs scripts away from the main thread
 - Renders a reactive dashboard described by a constrained Lua UI DSL
+- Registers bundled Lua pages and the start destination from `lua/app.lua`
 
 The console ships with three examples:
 
@@ -82,19 +83,37 @@ val result = LuaUiEngine().evaluate(script, state)
 LuaUi(result, onAction = ::dispatch)
 ```
 
-Compose scripts get safe base functions and the supported `ui` constructors. Persistent sessions additionally get string/table functions and, only when explicitly granted, a frozen `store` capability. They cannot access Java reflection, Android APIs, arbitrary files, network, processes, modules, debug functions, or dynamic loading. Unknown fields/types, cycles, invalid actions, syntax/runtime failures, and limits return a deterministic `LuaUiResult.Failure` rather than a partial tree. Limits are 500 KiB per UTF-8 script, depth 32, 1,000 nodes, 10,000 Unicode code points per text value, 100,000 total text code points, and gaps from 0 to 1,000.
+Compose scripts get safe base functions and the supported `ui` constructors. Persistent sessions additionally get string/table functions and only the explicitly supplied navigation, storage-factory, or legacy direct-store capabilities. They cannot access Java reflection, Android APIs, arbitrary files, network, processes, modules, debug functions, or dynamic loading. Unknown fields/types, cycles, invalid actions, syntax/runtime failures, and limits return a deterministic `LuaUiResult.Failure` rather than a partial tree. Limits are 500 KiB per UTF-8 script, depth 32, 1,000 nodes, 10,000 Unicode code points per text value, 100,000 total text code points, and gaps from 0 to 1,000.
 
 The shipped [`todo.lua`](lua/todo.lua) owns its draft, validation, IDs, item mutations, persistence decisions, messages, and rendering. A session script returns exactly `{ render = function, onEvent = function }`; the host admits only matching enabled action, text, or checked events from the latest validated tree. Closures survive events for the session lifetime.
 
-The todo document is JSON in the app-private `todos.json` file:
+Lua pages can request an app-private JSON document by name:
+
+```lua
+local store = storage.open("todos.json")
+```
+
+Names must be safe `.json` basenames. The returned frozen store exposes only `create`, `read`, `update`, and `delete`. The todo document is stored in `todos.json`:
 
 ```json
 {"version":1,"nextId":2,"items":[{"id":1,"title":"Example","completed":false}]}
 ```
 
-`JsonStore` exposes only `create`, `read`, `update`, and `delete`. Documents are validated with `kotlinx-serialization-json`, encoded as UTF-8, capped at 256 KiB, and atomically replaced. Lua receives JSON-compatible tables; mixed/sparse/cyclic tables, non-finite numbers, excessive nesting, invalid values, and writes during rendering are rejected. Empty Lua tables encode as arrays. Corrupt data blocks mutation rather than being overwritten, and storage errors never expose paths or document contents.
+Documents are validated with `kotlinx-serialization-json`, encoded as UTF-8, capped at 256 KiB, and atomically replaced. Lua receives JSON-compatible tables; mixed/sparse/cyclic tables, non-finite numbers, excessive nesting, invalid values, and writes during rendering are rejected. Empty Lua tables encode as arrays. Corrupt data blocks mutation rather than being overwritten, and storage errors never expose paths or document contents.
 
 The todo schema allows at most 100 items and 200 Unicode code points per title. Lua validates the complete document after every read and commits local changes only after a successful store operation. Recreating the feature starts a fresh session: persisted items reload, while an unsaved draft may be lost. Only bundled, trusted scripts are supported.
+
+## Lua page navigation
+
+The startup script registers dynamic destinations atomically. If the script, route patterns, start destination, or referenced assets are invalid, the app shows a generic startup error instead of publishing a partial graph.
+
+```lua
+registerRoute("playground", "playground.luac")
+registerRoute("item/{id}", "features/item.luac")
+setStartRoute("playground")
+```
+
+Routes support literal path segments and `{name}` placeholders. Page scripts receive decoded placeholder strings through `navigation.arguments`, and can call `navigation.navigate("item/42")` or `navigation.back()`. Query parameters and deep links are not supported.
 
 ## Safety by design
 

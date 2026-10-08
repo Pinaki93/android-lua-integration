@@ -1,6 +1,7 @@
 local MAX_ITEMS = 100
 local MAX_TITLE = 200
 local MAX_ID = 2147483647
+local store = storage.open("todos.json")
 
 local items = {}
 local next_id = 1

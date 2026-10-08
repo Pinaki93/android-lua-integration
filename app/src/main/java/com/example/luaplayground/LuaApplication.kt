@@ -12,7 +12,7 @@ class LuaApplication : Application() {
         super.onCreate()
         container = AppContainer(
             assetManager = AssetManager(assets),
-            todoStore = persistentJsonStore(File(filesDir, "todos.json")),
+            storageFactory = { name -> persistentJsonStore(File(filesDir, name)) },
         )
         container.start()
     }
