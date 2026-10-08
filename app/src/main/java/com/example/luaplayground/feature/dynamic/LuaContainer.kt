@@ -1,4 +1,4 @@
-package com.example.luaplayground.feature.lua
+package com.example.luaplayground.feature.dynamic
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue

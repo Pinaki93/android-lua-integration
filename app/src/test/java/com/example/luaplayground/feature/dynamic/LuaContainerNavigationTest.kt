@@ -1,4 +1,4 @@
-package com.example.luaplayground.feature.lua
+package com.example.luaplayground.feature.dynamic
 
 import com.example.luacompose.JsonStore
 import com.example.luaplayground.MainDispatcherRule

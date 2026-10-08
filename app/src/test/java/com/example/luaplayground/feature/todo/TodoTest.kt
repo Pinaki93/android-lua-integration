@@ -7,7 +7,7 @@ import com.example.luacompose.LuaUiResult
 import com.example.luacompose.UiNode
 import com.example.luacompose.UiInput
 import com.example.luaplayground.MainDispatcherRule
-import com.example.luaplayground.feature.lua.LuaContainerVm
+import com.example.luaplayground.feature.dynamic.LuaContainerVm
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest

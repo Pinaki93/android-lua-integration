@@ -21,7 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.luaplayground.feature.console.ConsoleFeature
 import com.example.luaplayground.feature.dashboard.DashboardFeature
-import com.example.luaplayground.feature.lua.LuaFeature
+import com.example.luaplayground.feature.dynamic.LuaFeature
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 

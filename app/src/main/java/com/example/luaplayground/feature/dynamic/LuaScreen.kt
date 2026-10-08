@@ -1,4 +1,4 @@
-package com.example.luaplayground.feature.lua
+package com.example.luaplayground.feature.dynamic
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background

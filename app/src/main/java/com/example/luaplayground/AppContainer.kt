@@ -6,7 +6,7 @@ import com.example.luacompose.JsonStore
 import com.example.luacompose.LuaUiEngine
 import com.example.luaplayground.feature.console.ConsoleContainer
 import com.example.luaplayground.feature.dashboard.DashboardContainer
-import com.example.luaplayground.feature.lua.LuaContainer
+import com.example.luaplayground.feature.dynamic.LuaContainer
 
 @Immutable
 class AppContainer(
