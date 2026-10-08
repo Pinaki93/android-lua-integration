@@ -7,6 +7,7 @@ import com.example.luacompose.LuaUiResult
 import com.example.luacompose.UiNode
 import com.example.luacompose.UiInput
 import com.example.luaplayground.MainDispatcherRule
+import com.example.luaplayground.feature.lua.LuaContainerVm
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -22,7 +23,7 @@ class TodoTest {
 
     @Test fun `rapid typing updates immediately and keeps the newest value`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
-        val vm = LuaSessionVm(java.io.File("build/generated/luaAssets/todo.luac").readBytes(), memory.store, mainDispatcherRule.dispatcher)
+        val vm = LuaContainerVm(java.io.File("build/generated/luaAssets/todo.luac").readBytes(), memory.store, mainDispatcherRule.dispatcher)
         assertTrue(vm.isLoading)
         advanceUntilIdle()
         assertFalse(vm.isLoading)
@@ -40,7 +41,7 @@ class TodoTest {
 
     @Test fun `typing then adding uses the complete text and clears the field`() = runTest(mainDispatcherRule.dispatcher) {
         val memory = MemoryStore()
-        val vm = LuaSessionVm(java.io.File("../lua/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
+        val vm = LuaContainerVm(java.io.File("../lua/todo.lua").readText(), memory.store, mainDispatcherRule.dispatcher)
         advanceUntilIdle()
 
         vm.input(UiInput.TextChanged("todo.draft", "Queued"))
@@ -54,7 +55,7 @@ class TodoTest {
     }
 
     @Test fun `rejected over-limit typing is reverted by Lua`() = runTest(mainDispatcherRule.dispatcher) {
-        val vm = LuaSessionVm(java.io.File("../lua/todo.lua").readText(), MemoryStore().store, mainDispatcherRule.dispatcher)
+        val vm = LuaContainerVm(java.io.File("../lua/todo.lua").readText(), MemoryStore().store, mainDispatcherRule.dispatcher)
         advanceUntilIdle()
         val accepted = "😀".repeat(200)
         vm.input(UiInput.TextChanged("todo.draft", accepted))

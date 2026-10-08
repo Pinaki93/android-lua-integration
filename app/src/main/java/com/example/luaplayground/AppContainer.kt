@@ -6,8 +6,8 @@ import com.example.luacompose.JsonStore
 import com.example.luacompose.LuaUiEngine
 import com.example.luaplayground.feature.console.ConsoleContainer
 import com.example.luaplayground.feature.dashboard.DashboardContainer
+import com.example.luaplayground.feature.lua.LuaContainer
 import com.example.luaplayground.feature.playground.PlaygroundContainer
-import com.example.luaplayground.feature.todo.TodoContainer
 
 @Immutable
 class AppContainer(
@@ -20,7 +20,7 @@ class AppContainer(
     private val console = ConsoleContainer(assetManager, luaEngine, navigator)
     private val dashboard = DashboardContainer(assetManager, luaUiEngine, navigator)
     private val playground = PlaygroundContainer(navigator)
-    private val todo = TodoContainer(assetManager, navigator, todoStore)
+    private val todo = LuaContainer(assetManager::readTodo, navigator, todoStore)
 
     constructor(assets: AndroidAssetManager) : this(AssetManager(assets))
 
