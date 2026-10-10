@@ -17,8 +17,19 @@ sealed interface UiNode {
     data class Row private constructor(
         val children: List<UiNode>,
         val gap: Int,
+        val wrap: Boolean,
     ) : UiNode {
-        constructor(children: Iterable<UiNode>, gap: Int = 0) : this(children.immutableList(), gap)
+        constructor(children: Iterable<UiNode>, gap: Int = 0, wrap: Boolean = false) : this(children.immutableList(), gap, wrap)
+    }
+
+    @ConsistentCopyVisibility
+    data class Dialog private constructor(
+        val title: String,
+        val children: List<UiNode>,
+        val dismissAction: String,
+    ) : UiNode {
+        constructor(title: String, children: Iterable<UiNode>, dismissAction: String) :
+            this(title, children.immutableList(), dismissAction)
     }
 
     data class Text(
@@ -26,6 +37,7 @@ sealed interface UiNode {
         val style: UiTextStyle = UiTextStyle.Body,
         val weight: Boolean = false,
         val strikeThrough: Boolean = false,
+        val tone: UiTextTone = UiTextTone.Default,
     ) : UiNode
 
     data class Image(
@@ -40,9 +52,10 @@ sealed interface UiNode {
     data class Card private constructor(
         val children: List<UiNode>,
         val style: UiCardStyle,
+        val action: String?,
     ) : UiNode {
-        constructor(children: Iterable<UiNode>, style: UiCardStyle = UiCardStyle.Default) :
-            this(children.immutableList(), style)
+        constructor(children: Iterable<UiNode>, style: UiCardStyle = UiCardStyle.Default, action: String? = null) :
+            this(children.immutableList(), style, action)
     }
 
     @Immutable
@@ -61,6 +74,7 @@ sealed interface UiNode {
         val enabled: Boolean = true,
         val error: String? = null,
         val style: UiTextFieldStyle = UiTextFieldStyle.Outlined,
+        val multiline: Boolean = false,
     ) : UiNode
 
     @Immutable
@@ -99,7 +113,10 @@ enum class UiTextStyle {
     Title,
     Metric,
     Label,
+    Heading,
 }
+
+enum class UiTextTone { Default, Secondary, Accent, Gold }
 
 enum class UiCardStyle {
     Default,
@@ -114,6 +131,9 @@ enum class UiButtonStyle {
     Primary,
     Orange,
     Quiet,
+    Filter,
+    Selected,
+    Destructive,
 }
 
 enum class UiTextFieldStyle {

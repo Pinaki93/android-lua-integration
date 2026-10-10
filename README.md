@@ -56,6 +56,7 @@ Lua is not given direct access to the filesystem, network, or Android framework.
 - A native dashboard rendered from a Lua-defined UI tree and Kotlin-provided state.
 - A Lua-driven todo screen that demonstrates input handling, validation, persistence, and error states.
 - A Lua-driven OkHttp Contributors screen that demonstrates GitHub API pagination, retry and refresh actions, and contributor avatars through a restricted native HTTP adapter.
+- A Lua-driven reading list with locally saved entries and notes, status and tag filters, title retrieval, and browser launching through a dedicated native capability.
 - A Gradle build step that compiles `.lua` sources into stripped `.luac` assets before the Android build.
 - Fast unit tests for the Lua boundary, UI parsing, storage, navigation, application startup, and example screens.
 
@@ -74,6 +75,7 @@ Lua is not given direct access to the filesystem, network, or Android framework.
 ```text
 .
 ├── app/           Android application, navigation, native containers, and examples
+├── docs/prd/      Product requirements for example flows
 ├── lua/           Lua application entry point and screen scripts
 └── lua-compose/   Lua runtime boundary, UI model, Compose renderer, and JSON storage
 ```
@@ -117,6 +119,38 @@ Checkboxes can use `showLabel = false` while retaining their accessible `label`;
 The former todo-specific `listItem` fields are replaced by `key` and `children`.
 
 The existing `playground.lua` and `todo.lua` scripts are the simplest references for navigation, events, and persistence.
+
+### Reading list
+
+Open **Reading list** from the playground to save an HTTPS article URL with an
+optional title, up to five tags, and a note. Entries can be filtered by read status
+and tag, edited, marked read or unread, and deleted with confirmation. The list
+shows 20 entries per page. Duplicate normalized URLs open the existing entry.
+
+Saved entries and notes work offline; original articles open in the browser and
+are not downloaded. The screen persists a versioned `reading-list.json` document
+through `JsonStore`, within its 256 KiB quota. Failed writes preserve the previous
+list, and invalid saved documents show a reload action without resetting data.
+
+Only `reading-list.luac` receives the frozen `reading` capability. It provides
+URL normalization, title fetching, browser launching, IDs, timestamps, and small
+text helpers. URLs must use HTTPS on port 443 without credentials; normalization
+removes fragments and preserves path and query semantics. Title fetching rejects
+private and reserved destinations, checks resolved and connected addresses,
+disables redirects and cookies, and uses a 30-second timeout and 1 MiB response
+limit. Lua receives only a title or error, never raw HTML or response headers.
+
+Title retrieval starts after a new entry is saved or on explicit Retry. Failures
+retain the supplied title or URL fallback; successful retrieval preserves user
+titles. Interrupted requests remain retryable after reopening the screen. The
+bounded parser supports UTF-8/ASCII HTML with a closed head in its first 64 KiB
+and a limited set of named entities plus numeric entities.
+
+The example adds clickable cards, wrapping rows, multiline fields, confirmation
+dialogs, and filter/destructive button styles to the validated Compose UI model.
+Its cream, teal, and gold theme applies only to the reading-list route. See
+[`lua/reading-list.lua`](lua/reading-list.lua) and the
+[product requirements](docs/prd/offline-reading-list.md) for the flow and scope.
 
 ## Design principles
 

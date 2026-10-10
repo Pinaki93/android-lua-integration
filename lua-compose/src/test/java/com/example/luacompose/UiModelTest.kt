@@ -33,11 +33,17 @@ class UiModelTest {
     fun `node and failure lists are immutable snapshots`() {
         val children = mutableListOf<UiNode>(UiNode.Text("First"))
         val root = UiNode.Column(children)
+        val dialog = UiNode.Dialog("Delete?", children, "cancel")
         children += UiNode.Text("Later")
 
         assertEquals(listOf(UiNode.Text("First")), root.children)
         assertThrows(UnsupportedOperationException::class.java) {
             (root.children as MutableList).add(UiNode.Text("Blocked"))
+        }
+
+        assertEquals(listOf(UiNode.Text("First")), dialog.children)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (dialog.children as MutableList).clear()
         }
 
         val errors = mutableListOf(LuaUiError(LuaUiError.Kind.Validation, "missing text"))

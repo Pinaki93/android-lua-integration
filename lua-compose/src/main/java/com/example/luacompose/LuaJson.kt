@@ -11,9 +11,12 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import org.luaj.vm2.*
 
+internal class JsonArrayTable : LuaTable()
+
 internal class JsonFailure : RuntimeException()
 
 internal class LuaJson(private val nullValue: LuaValue = LuaValue.NIL) {
+    private val decodedNull = if (nullValue.isnil()) LuaValue.userdataOf(Any()) else nullValue
     fun encode(value: LuaValue): String {
         if (!value.istable()) throw JsonFailure()
         return luaToJson(value, 1, Collections.newSetFromMap(IdentityHashMap())).toString()
@@ -22,7 +25,7 @@ internal class LuaJson(private val nullValue: LuaValue = LuaValue.NIL) {
     private fun luaToJson(value: LuaValue, depth: Int, active: MutableSet<LuaTable>): JsonElement {
         if (depth > 32) throw JsonFailure()
         return when {
-            value === nullValue && !nullValue.isnil() -> JsonNull
+            value === decodedNull -> JsonNull
             value.isboolean() -> JsonPrimitive(value.toboolean())
             value.isnumber() -> {
                 val number = value.todouble()
@@ -78,8 +81,8 @@ internal class LuaJson(private val nullValue: LuaValue = LuaValue.NIL) {
     private fun jsonToLua(value: JsonElement, depth: Int): LuaValue {
         if (depth > 32) throw LuaError("store: invalid data")
         return when (value) {
-            JsonNull -> nullValue
-            is JsonArray -> LuaTable().apply { value.forEachIndexed { index, item -> set(index + 1, jsonToLua(item, depth + 1)) } }
+            JsonNull -> decodedNull
+            is JsonArray -> JsonArrayTable().apply { value.forEachIndexed { index, item -> set(index + 1, jsonToLua(item, depth + 1)) } }
             is JsonObject -> LuaTable().apply { value.forEach { (key, item) -> set(key, jsonToLua(item, depth + 1)) } }
             is JsonPrimitive -> when {
                 value.isString -> LuaValue.valueOf(value.content)

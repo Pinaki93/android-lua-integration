@@ -133,11 +133,11 @@ private fun DynamicNavHost(
                 val arguments = route.arguments.mapNotNull { name ->
                     entry.arguments?.getString(name)?.let { name to it }
                 }.toMap()
-                LuaFeature(
-                    container.page(route.pattern),
-                    arguments,
-                    showBack = route.pattern != startRoute,
-                )
+                val content: @Composable () -> Unit = {
+                    LuaFeature(container.page(route.pattern), arguments, showBack = route.pattern != startRoute)
+                }
+                if (route.script == "reading-list.luac") com.example.luacompose.ReadingTheme(content)
+                else content()
             }
         }
     }

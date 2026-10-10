@@ -29,6 +29,7 @@ class LuaContainer(
     private val storage: (String) -> JsonStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val http: LuaHttpClient? = null,
+    private val reading: com.example.luacompose.ReadingCapabilities? = null,
 ) {
     fun createVm(arguments: Map<String, String> = emptyMap()) =
         LuaContainerVm(
@@ -41,7 +42,7 @@ class LuaContainer(
                         navigate = { scope.launch { navigator.navigate(it) } },
                         back = { scope.launch { navigator.popBackStack() } },
                     ),
-                    http, CoroutineScope(scope.coroutineContext + io), completed,
+                    http, CoroutineScope(scope.coroutineContext + io), completed, reading,
                 )
             },
             io,
@@ -151,9 +152,9 @@ class LuaContainerVm internal constructor(
 }
 
 private fun UiNode.withInput(input: UiInput): UiNode = when (this) {
-    is UiNode.Card -> UiNode.Card(children.map { it.withInput(input) }, style)
+    is UiNode.Card -> UiNode.Card(children.map { it.withInput(input) }, style, action)
     is UiNode.Column -> UiNode.Column(children.map { it.withInput(input) }, gap)
-    is UiNode.Row -> UiNode.Row(children.map { it.withInput(input) }, gap)
+    is UiNode.Row -> UiNode.Row(children.map { it.withInput(input) }, gap, wrap)
     is UiNode.TextField -> if (enabled && input is UiInput.TextChanged && action == input.action) copy(value = input.value) else this
     is UiNode.Checkbox -> if (enabled && input is UiInput.CheckedChanged && action == input.action) copy(checked = input.checked) else this
     is UiNode.ListItem -> UiNode.ListItem(key, children.map { it.withInput(input) })

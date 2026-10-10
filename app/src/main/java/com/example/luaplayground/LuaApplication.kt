@@ -21,6 +21,13 @@ class LuaApplication : Application() {
         container = AppContainer(
             assetManager = AssetManager(assets),
             httpClient = httpClient,
+            reading = com.example.luacompose.ReadingCapabilities(
+                fetchTitle = com.example.luacompose.ReadingTitleClient()::fetch,
+                openOriginal = { url ->
+                    startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+            ),
             storageFactory = { name -> persistentJsonStore(File(filesDir, name)) },
         )
         container.start()

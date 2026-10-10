@@ -114,7 +114,7 @@ class LuaUiEngine {
     }
 
     internal fun uiTable() = FrozenTable().apply {
-        listOf("column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
+        listOf("dialog", "column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
             add(LuaValue.valueOf(type), NodeConstructor(type))
         }
         freeze()
@@ -163,21 +163,28 @@ class LuaUiEngine {
             try {
                 val type = requiredString(table, "type", path)
                 return when (type) {
+                    "dialog" -> {
+                        fields(table, path, "type", "title", "children", "dismissAction")
+                        val dismiss = table.get("dismissAction")
+                        if (dismiss.type() != LuaValue.TSTRING || !ACTION.matches(dismiss.tojstring())) fail(LuaUiError.Kind.Validation, "Invalid dismiss action.")
+                        UiNode.Dialog(text(table, "title", path), children(table, path, depth), dismiss.tojstring())
+                    }
                     "column" -> {
                         fields(table, path, "type", "gap", "children")
                         UiNode.Column(children(table, path, depth), gap(table, path))
                     }
                     "row" -> {
-                        fields(table, path, "type", "gap", "children")
-                        UiNode.Row(children(table, path, depth), gap(table, path))
+                        fields(table, path, "type", "gap", "children", "wrap")
+                        UiNode.Row(children(table, path, depth), gap(table, path), optionalBoolean(table, "wrap", path, false))
                     }
                     "text" -> {
-                        fields(table, path, "type", "text", "style", "weight", "strikeThrough")
+                        fields(table, path, "type", "text", "style", "weight", "strikeThrough", "tone")
                         UiNode.Text(
                             text = text(table, "text", path),
                             style = style(table, path),
                             weight = optionalBoolean(table, "weight", path, false),
                             strikeThrough = optionalBoolean(table, "strikeThrough", path, false),
+                            tone = tone(table, path),
                         )
                     }
                     "image" -> {
@@ -191,15 +198,15 @@ class LuaUiEngine {
                         )
                     }
                     "card" -> {
-                        fields(table, path, "type", "children", "style")
-                        UiNode.Card(children(table, path, depth), cardStyle(table, path))
+                        fields(table, path, "type", "children", "style", "action")
+                        UiNode.Card(children(table, path, depth), cardStyle(table, path), if (table.get("action").isnil()) null else action(table, path))
                     }
                     "button" -> {
                         fields(table, path, "type", "text", "action", "enabled", "style")
                         UiNode.Button(text(table, "text", path), action(table, path), enabled(table, path), buttonStyle(table, path))
                     }
                     "textField" -> {
-                        fields(table, path, "type", "value", "label", "action", "enabled", "error", "style")
+                        fields(table, path, "type", "value", "label", "action", "enabled", "error", "style", "multiline")
                         UiNode.TextField(
                             value = text(table, "value", path),
                             label = label(table, path),
@@ -207,6 +214,7 @@ class LuaUiEngine {
                             enabled = enabled(table, path),
                             error = optionalText(table, "error", path),
                             style = textFieldStyle(table, path),
+                            multiline = optionalBoolean(table, "multiline", path, false),
                         )
                     }
                     "checkbox" -> {
@@ -299,8 +307,17 @@ class LuaUiEngine {
                 "title" -> UiTextStyle.Title
                 "metric" -> UiTextStyle.Metric
                 "label" -> UiTextStyle.Label
+                "heading" -> UiTextStyle.Heading
                 else -> fail(LuaUiError.Kind.Validation, "Unknown style '$style' at $path.")
             }
+        }
+
+        private fun tone(table: LuaTable, path: String): UiTextTone {
+            val value = table.get("tone")
+            if (value.isnil()) return UiTextTone.Default
+            if (value.type() != LuaValue.TSTRING) fail(LuaUiError.Kind.Validation, "Field 'tone' at $path must be a string.")
+            return UiTextTone.entries.firstOrNull { it.name.lowercase() == value.tojstring() }
+                ?: fail(LuaUiError.Kind.Validation, "Unknown text tone at $path.")
         }
 
         private fun cardStyle(table: LuaTable, path: String): UiCardStyle {
@@ -326,6 +343,9 @@ class LuaUiEngine {
                 "primary" -> UiButtonStyle.Primary
                 "orange" -> UiButtonStyle.Orange
                 "quiet" -> UiButtonStyle.Quiet
+                "filter" -> UiButtonStyle.Filter
+                "selected" -> UiButtonStyle.Selected
+                "destructive" -> UiButtonStyle.Destructive
                 else -> fail(LuaUiError.Kind.Validation, "Unknown button style '$style' at $path.")
             }
         }

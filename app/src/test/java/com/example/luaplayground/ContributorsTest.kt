@@ -18,6 +18,7 @@ class ContributorsTest {
     @Test fun `permissions belong to the asset and reject URL bypasses`() {
         val client = HttpClient(MockEngine { error("must not send") })
         assertNull(httpForScript("todo.luac", client))
+        assertNull(httpForScript("reading-list.luac", client))
         assertNull(httpForScript("other/okhttp-contributors.luac", client))
         assertNotNull(httpForScript("okhttp-contributors.luac", client))
         val base = "https://api.github.com/repos/lysine-dev/okhttp/contributors?page=1&per_page=100&anon=1"

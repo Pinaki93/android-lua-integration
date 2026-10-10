@@ -1,5 +1,13 @@
 package com.example.luacompose
 
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
@@ -90,6 +98,9 @@ internal fun lazyRoot(node: UiNode, enabled: Boolean): UiNode.Column? =
 internal fun lazyItemKey(index: Int, node: UiNode): Any =
     if (node is UiNode.ListItem) "list:${node.key}" else index
 
+internal val LocalReadingStyle = compositionLocalOf { false }
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LuaNode(
     node: UiNode,
@@ -98,6 +109,14 @@ private fun LuaNode(
     modifier: Modifier = Modifier,
 ) {
     when (node) {
+        is UiNode.Dialog -> androidx.compose.ui.window.Dialog(onDismissRequest = { onAction(node.dismissAction) }) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)) {
+                Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(node.title, style = MaterialTheme.typography.titleLarge)
+                    node.children.forEach { LuaNode(it, onAction, onInput) }
+                }
+            }
+        }
         is UiNode.Column -> Column(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(node.gap.toDp()),
@@ -107,7 +126,15 @@ private fun LuaNode(
                 if (hasListDivider(node.children, index)) HorizontalDivider()
             }
         }
-        is UiNode.Row -> Row(
+        is UiNode.Row -> if (node.wrap) {
+            FlowRow(
+                modifier = modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(node.gap.dp),
+                verticalArrangement = Arrangement.spacedBy(node.gap.dp),
+            ) {
+                node.children.forEach { LuaNode(it, onAction, onInput) }
+            }
+        } else Row(
             modifier = modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(node.gap.toDp()),
             verticalAlignment = Alignment.CenterVertically,
@@ -122,6 +149,12 @@ private fun LuaNode(
             modifier = modifier,
             style = node.style.textStyle(MaterialTheme.typography),
             textDecoration = TextDecoration.LineThrough.takeIf { node.strikeThrough },
+            color = when (node.tone) {
+                UiTextTone.Default -> androidx.compose.material3.LocalContentColor.current
+                UiTextTone.Secondary -> MaterialTheme.colorScheme.onSurfaceVariant
+                UiTextTone.Accent -> MaterialTheme.colorScheme.primary
+                UiTextTone.Gold -> MaterialTheme.colorScheme.tertiary
+            },
         )
         is UiNode.Image -> AsyncImage(
             model = node.url,
@@ -132,13 +165,20 @@ private fun LuaNode(
             contentScale = ContentScale.Crop,
         )
         is UiNode.Card -> Card(
-            modifier = modifier,
+            modifier = modifier
+                .then(if (LocalReadingStyle.current) Modifier.fillMaxWidth() else Modifier)
+                .then(node.action?.let {
+                    Modifier.clickable(role = Role.Button, onClick = action(it, onAction))
+                } ?: Modifier),
             shape = RoundedCornerShape(if (node.style == UiCardStyle.Accent) 24.dp else 16.dp),
-            colors = CardDefaults.cardColors(containerColor = node.style.containerColor(MaterialTheme.colorScheme)),
+            colors = CardDefaults.cardColors(
+                containerColor = node.style.containerColor(MaterialTheme.colorScheme),
+                contentColor = node.style.contentColor(MaterialTheme.colorScheme),
+            ),
             elevation = CardDefaults.cardElevation(defaultElevation = if (node.style == UiCardStyle.Outlined) 1.dp else 0.dp),
             border = if (node.style == UiCardStyle.Outlined) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
         ) {
-            Column(Modifier.padding(if (node.style == UiCardStyle.Accent) 24.dp else 12.dp)) {
+            Column(Modifier.padding(if (LocalReadingStyle.current) 20.dp else if (node.style == UiCardStyle.Accent) 24.dp else 12.dp)) {
                 node.children.forEach { LuaNode(it, onAction, onInput) }
             }
         }
@@ -146,16 +186,23 @@ private fun LuaNode(
             if (node.style == UiButtonStyle.Quiet) {
                 TextButton(
                     onClick = action(node.action, onAction, node.enabled),
-                    modifier = modifier,
+                    modifier = modifier.heightIn(min = 48.dp),
                     enabled = node.enabled,
                     content = { Text(node.text) },
                 )
             } else {
                 Button(
                     onClick = action(node.action, onAction, node.enabled),
-                    modifier = modifier,
+                    modifier = modifier.heightIn(min = 48.dp).semantics {
+                        if (node.style == UiButtonStyle.Filter || node.style == UiButtonStyle.Selected) {
+                            selected = node.style == UiButtonStyle.Selected
+                        }
+                    },
                     enabled = node.enabled,
-                    colors = ButtonDefaults.buttonColors(containerColor = node.style.containerColor(MaterialTheme.colorScheme)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = node.style.containerColor(MaterialTheme.colorScheme),
+                        contentColor = node.style.contentColor(MaterialTheme.colorScheme),
+                    ),
                     content = { Text(node.text) },
                 )
             }
@@ -165,10 +212,11 @@ private fun LuaNode(
                 TextField(
                     value = node.value,
                     onValueChange = textInput(node.action, node.enabled, onInput),
-                    modifier = modifier,
+                    modifier = modifier.then(if (LocalReadingStyle.current) Modifier.fillMaxWidth() else Modifier),
                     enabled = node.enabled,
                     label = { Text(node.label) },
-                    singleLine = true,
+                    singleLine = !node.multiline,
+                    minLines = if (node.multiline) 4 else 1,
                     isError = node.error != null,
                     supportingText = node.error?.let { error -> ({ Text(error) }) },
                     colors = TextFieldDefaults.colors(
@@ -184,10 +232,11 @@ private fun LuaNode(
                 OutlinedTextField(
                     value = node.value,
                     onValueChange = textInput(node.action, node.enabled, onInput),
-                    modifier = modifier,
+                    modifier = modifier.then(if (LocalReadingStyle.current) Modifier.fillMaxWidth() else Modifier),
                     enabled = node.enabled,
                     label = { Text(node.label) },
-                    singleLine = true,
+                    singleLine = !node.multiline,
+                    minLines = if (node.multiline) 4 else 1,
                     isError = node.error != null,
                     supportingText = node.error?.let { error -> ({ Text(error) }) },
                 )
@@ -235,6 +284,7 @@ internal fun UiTextStyle.textStyle(typography: Typography): TextStyle = when (th
     UiTextStyle.Title -> typography.titleLarge
     UiTextStyle.Metric -> typography.headlineMedium
     UiTextStyle.Label -> typography.labelMedium
+    UiTextStyle.Heading -> typography.headlineLarge
 }
 
 internal fun UiCardStyle.containerColor(colors: ColorScheme) = when (this) {
@@ -250,6 +300,9 @@ internal fun UiButtonStyle.containerColor(colors: ColorScheme) = when (this) {
     UiButtonStyle.Primary -> colors.primary
     UiButtonStyle.Orange -> colors.tertiary
     UiButtonStyle.Quiet -> Color.Transparent
+    UiButtonStyle.Filter -> colors.surfaceContainerLow
+    UiButtonStyle.Selected -> colors.primary
+    UiButtonStyle.Destructive -> colors.error
 }
 
 internal fun checkboxColor(colors: ColorScheme) = colors.tertiary
@@ -279,3 +332,18 @@ internal fun checkedInput(action: String, enabled: Boolean, onInput: (UiInput) -
 }
 
 internal fun LuaUiResult.Failure.displayText(): String = "Unable to render UI."
+
+internal fun UiCardStyle.contentColor(colors: ColorScheme) = when (this) {
+    UiCardStyle.Accent -> colors.onPrimary
+    UiCardStyle.Orange -> colors.onTertiary
+    UiCardStyle.LightOrange -> colors.onTertiaryContainer
+    else -> colors.onSurface
+}
+
+internal fun UiButtonStyle.contentColor(colors: ColorScheme) = when (this) {
+    UiButtonStyle.Orange -> colors.onTertiary
+    UiButtonStyle.Destructive -> colors.onError
+    UiButtonStyle.Filter -> colors.onSurface
+    UiButtonStyle.Quiet -> colors.primary
+    else -> colors.onPrimary
+}

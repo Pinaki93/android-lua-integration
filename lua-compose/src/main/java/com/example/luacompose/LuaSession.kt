@@ -36,6 +36,7 @@ class LuaSession private constructor(
     private val http: LuaHttpClient? = null,
     private val scope: CoroutineScope? = null,
     private val completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
+    private val reading: ReadingCapabilities? = null,
 ) : AutoCloseable {
     constructor(script: ByteArray, store: JsonStore? = null) : this(script, null, store, null, null)
     constructor(script: String, store: JsonStore? = null) : this(null, script, store, null, null)
@@ -46,8 +47,9 @@ class LuaSession private constructor(
         http: LuaHttpClient? = null,
         scope: CoroutineScope? = null,
         completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
+        reading: ReadingCapabilities? = null,
     ) :
-        this(script, null, null, storage, navigation, http, scope, completed)
+        this(script, null, null, storage, navigation, http, scope, completed, reading)
     constructor(
         script: String,
         storage: (String) -> JsonStore,
@@ -55,10 +57,12 @@ class LuaSession private constructor(
         http: LuaHttpClient? = null,
         scope: CoroutineScope? = null,
         completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
+        reading: ReadingCapabilities? = null,
     ) :
-        this(null, script, null, storage, navigation, http, scope, completed)
+        this(null, script, null, storage, navigation, http, scope, completed, reading)
     init {
-        require(http == null || scope != null && completed != null) {
+        require(http == null || reading == null) { "A session may have only one network capability." }
+        require(http == null && reading == null || scope != null && completed != null) {
             "HTTP requires a request scope and completion queue."
         }
     }
@@ -92,6 +96,7 @@ class LuaSession private constructor(
         storage?.let { environment.set("storage", storageTable(it)) }
         navigation?.let { environment.set("navigation", navigationTable(it)) }
         http?.let { environment.set("http", httpTable(it)) }
+        reading?.let { environment.set("reading", readingTable(it)) }
         val chunk = try {
             source?.let { environment.load(it, "ui.lua") }
                 ?: environment.load(ByteArrayInputStream(bytecode!!), "ui.luac", "b", environment)
@@ -167,12 +172,13 @@ class LuaSession private constructor(
         (event !is LuaEvent.TextChanged || event.value.codePointCount(0, event.value.length) <= LuaUiEngine.MAX_TEXT_LENGTH)
 
     private fun admits(node: UiNode?, event: LuaEvent): Boolean = when (node) {
+        is UiNode.Dialog -> if (event is LuaEvent.Action && event.action == node.dismissAction) true else node.children.any { admits(it, event) }
         is UiNode.Button -> event is LuaEvent.Action && node.enabled && node.action == event.action
         is UiNode.TextField -> event is LuaEvent.TextChanged && node.enabled && node.action == event.action
         is UiNode.Checkbox -> event is LuaEvent.CheckedChanged && node.enabled && node.action == event.action
         is UiNode.IconButton -> event is LuaEvent.Action && node.enabled && node.action == event.action
         is UiNode.ListItem -> node.children.any { admits(it, event) }
-        is UiNode.Card -> node.children.any { admits(it, event) }
+        is UiNode.Card -> (event is LuaEvent.Action && node.action == event.action) || node.children.any { admits(it, event) }
         is UiNode.Column -> node.children.any { admits(it, event) }
         is UiNode.Row -> node.children.any { admits(it, event) }
         else -> false
@@ -200,7 +206,10 @@ class LuaSession private constructor(
         val callback = callbacks.remove(id) ?: return result ?: failure()
         jobs.remove(id)
         try {
-            if (callback.invoke(http!!.table(response)).narg() != 0) {
+            if (callback.invoke(http?.table(response) ?: LuaTable().apply {
+                set("title", response.body)
+                response.error?.let { set("error", it) }
+            }).narg() != 0) {
                 return stop(LuaUiError.Kind.Validation, "HTTP callback must return no values.")
             }
         } catch (_: Exception) {
@@ -236,6 +245,42 @@ class LuaSession private constructor(
                 return LuaValue.NONE
             }
         })
+        freeze()
+    }
+
+    private fun readingTable(capability: ReadingCapabilities) = LuaUiEngine.FrozenTable().apply {
+        fun function(name: String, count: Int, call: (Varargs) -> Varargs) {
+            add(LuaValue.valueOf(name), object : VarArgFunction() {
+                override fun invoke(args: Varargs): Varargs {
+                    if (rendering && name in setOf("fetch", "open", "id", "now")) throw LuaError("reading: unavailable during render")
+                    if (args.narg() != count) throw LuaError("reading: invalid arguments")
+                    return try { call(args) } catch (_: Exception) { throw LuaError("reading: unavailable or invalid input") }
+                }
+            })
+        }
+        function("normalize", 1) { LuaValue.valueOf(ReadingCapabilities.normalize(it.arg1().checkjstring())) }
+        function("hostname", 1) { LuaValue.valueOf(ReadingCapabilities.hostname(it.arg1().checkjstring())) }
+        function("isArray", 1) { LuaValue.valueOf(it.arg1() is JsonArrayTable) }
+        function("trim", 1) { LuaValue.valueOf(it.arg1().checkjstring().trim()) }
+        function("lower", 1) { LuaValue.valueOf(it.arg1().checkjstring().lowercase(java.util.Locale.ROOT)) }
+        function("length", 1) { val text = it.arg1().checkjstring(); LuaValue.valueOf(text.codePointCount(0, text.length)) }
+        function("id", 0) { LuaValue.valueOf(capability.identifier()) }
+        function("now", 0) { LuaValue.valueOf(capability.now().toDouble()) }
+        function("open", 1) { capability.openOriginal(ReadingCapabilities.normalize(it.arg1().checkjstring())); LuaValue.NONE }
+        function("fetch", 2) { args ->
+            val url = ReadingCapabilities.normalize(args.arg1().checkjstring())
+            val callback = args.arg(2).checkfunction()
+            val id = ++nextRequest
+            callbacks[id] = callback
+            if (callbacks.size > 4) completed!!(id, LuaHttpClient.Response(error = "pending_limit"))
+            else jobs[id] = scope!!.launch {
+                val response = try { capability.fetchTitle(url) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { LuaHttpClient.Response(error = "transport") }
+                completed!!(id, response)
+            }
+            LuaValue.NONE
+        }
         freeze()
     }
 

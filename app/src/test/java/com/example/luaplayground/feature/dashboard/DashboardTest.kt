@@ -55,6 +55,7 @@ class DashboardTest {
 
     private fun UiNode.texts(): List<String> = when (this) {
         is UiNode.Button -> listOf(text)
+        is UiNode.Dialog -> listOf(title) + children.flatMap { it.texts() }
         is UiNode.Card -> children.flatMap { it.texts() }
         is UiNode.Column -> children.flatMap { it.texts() }
         is UiNode.Row -> children.flatMap { it.texts() }
