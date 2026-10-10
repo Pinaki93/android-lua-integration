@@ -11,6 +11,44 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReadingCapabilitiesTest {
+    @Test fun `title fetch logs validation and policy failures without input`() = runTest {
+        val logs = mutableListOf<String>()
+        val client = ReadingTitleClient(log = { logs += it }, resolve = { error("No network") })
+        assertEquals("validation", client.fetch("http://example.com/private?secret=token").error)
+        assertEquals(listOf("title: starting", "request: rejected invalid URL", "title: result=validation"), logs)
+        logs.clear()
+        assertEquals("policy", client.fetch("https://127.0.0.1/private").error)
+        assertEquals(listOf("title: starting", "request: rejected unsafe address", "title: result=policy"), logs)
+    }
+
+    @Test fun `favicon links resolve safely with default fallback`() {
+        val client = ReadingTitleClient { error("No network") }
+        assertEquals("https://example.com/icons/site.png", client.faviconUrl("https://example.com/articles/a", "<head><link rel='shortcut icon' href='../icons/site.png'></head>"))
+        assertEquals("https://cdn.example.com/icon.png", client.faviconUrl("https://example.com/a", "<LINK REL=icon HREF=//cdn.example.com/icon.png>"))
+        assertEquals("https://example.com/favicon.ico", client.faviconUrl("https://example.com/a", "<!--<link rel='icon' href='/fake'>--><link rel='icon' href='http://unsafe.example/a'>"))
+        assertEquals("https://example.com/favicon.ico", client.faviconUrl("https://example.com/a", "<link rel='' href=''>"))
+    }
+
+    @Test fun `saved favicon downloads are bounded and reject unsupported content`() {
+        val client = ReadingTitleClient { error("No network") }
+        val png = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+        fun response(bytes: ByteArray, code: Int = 200) = Response.Builder()
+            .request(Request.Builder().url("https://example.com/favicon.ico").build())
+            .protocol(Protocol.HTTP_1_1).code(code).message("test")
+            .body(bytes.toResponseBody()).build()
+        assertArrayEquals(png, SavedFavicon.decode(client.faviconResponse(response(png)).body))
+        assertEquals("unsupported", client.faviconResponse(response("<html>".toByteArray())).error)
+        assertEquals("response_size", client.faviconResponse(response(ByteArray(32769))).error)
+        assertEquals("http", client.faviconResponse(response(png, 302)).error)
+        assertNull(SavedFavicon.decode("bad base64"))
+        assertNull(SavedFavicon.decode("A".repeat(43693)))
+        val ico = java.nio.ByteBuffer.allocate(22 + png.size).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        ico.putShort(0).putShort(1).putShort(1).putInt(0).putShort(1).putShort(32).putInt(png.size).putInt(22).put(png)
+        assertArrayEquals(png, SavedFavicon.image(ico.array()))
+        ico.putInt(18, Int.MAX_VALUE)
+        assertNull(SavedFavicon.image(ico.array()))
+    }
+
     @Test fun `normalization removes fragments credentials and default port without altering path or query`() {
         assertEquals("https://example.com/a/?x=%2F&x=2", ReadingCapabilities.normalize(" HTTPS://EXAMPLE.COM:443/a/?x=%2F&x=2#top "))
         for (path in listOf("", "/", "/a", "/a/", "/a%2fb", "/a/../b", "/?q=1", "/?q=2", "/?q=+", "/?q=%20", "/?", "//a")) {
@@ -127,6 +165,37 @@ class ReadingCapabilitiesTest {
         assertEquals("İ Title", HtmlTitle.parse("<head><title>İ Title</title></head>").body)
         assertEquals("< > '\"", HtmlTitle.parse("<head><title>&lt; &gt; &apos;&quot;</title></head>").body)
         assertNull(HtmlTitle.parse("<head><title>${"😀".repeat(300)}</title></head>").error)
+    }
+
+    @Test fun `title attributes and large heads do not hide a valid title`() {
+        for (attributes in listOf("data-rh=\"true\"", "class='page-title'", "data-label='a > b'", "DATA-RH=\"true\" lang=en")) {
+            val html = "<html><head><title $attributes>Android Developers – Medium</title>" +
+                "<style>${" ".repeat(70 * 1024)}</style></head><body>Ignored</body></html>"
+            val result = HtmlTitle.parse(html)
+            assertNull(result.error)
+            assertEquals("Android Developers – Medium", result.body)
+        }
+        assertEquals("Late title", HtmlTitle.parse("<head><style>${" ".repeat(70 * 1024)}</style><title data-rh='true'>Late title</title></head>").body)
+        assertNotNull(HtmlTitle.parse("<head><title data-rh='true>Broken</title></head>").error)
+        assertNotNull(HtmlTitle.parse("<head><title data-rh='true'>First</title><title>Second</title></head>").error)
+    }
+
+    @Test fun `missing title diagnostics identify parser rejection without page text`() {
+        val cases = mapOf(
+            "<head></head>" to "head_without_title",
+            "<head><title>Private title</title><body>Private note" to "body_before_head_closed",
+            "<head><script>private data" to "unclosed_script",
+            "<head><!--private data" to "unclosed_comment",
+            "<title>Private title</title>" to "title_outside_head",
+            "<head><title data-label='private data" to "unclosed_tag",
+            "<head><title>Private title</title>" to "head_not_closed",
+        )
+        for ((html, reason) in cases) {
+            val logs = mutableListOf<String>()
+            assertEquals("missing_title", HtmlTitle.parse(html) { logs += it }.error)
+            assertTrue(logs.any { it.contains("rejected=$reason;") })
+            assertTrue(logs.none { it.contains("Private") || it.contains("private") })
+        }
     }
 
     @Test fun `missing malformed unknown entities and oversized titles retain fallback`() {

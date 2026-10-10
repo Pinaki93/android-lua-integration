@@ -3,6 +3,7 @@ local store, message, errors = nil, nil, {}
 local screen, selected, status, tag = "list", nil, "All", ""
 local draft = { url = "", title = "", tags = "", note = "" }
 local requests, deletion = {}, false
+local preview, preview_token = nil, 0
 local page, tag_page = 1, 1
 local function trim(value) return reading.trim(value) end
 local function text(value, style, tone) return ui.text { text = value, style = style, tone = tone } end
@@ -49,7 +50,7 @@ end
 local function keys(value, allowed)
   if type(value) ~= "table" then return false end
   for key in pairs(value) do if not allowed[key] then return false end end
-  for key in pairs(allowed) do if value[key] == nil then return false end end
+  for key in pairs(allowed) do if key ~= "favicon" and value[key] == nil then return false end end
   return true
 end
 local function valid(document)
@@ -57,7 +58,8 @@ local function valid(document)
   local ids, urls = {}, {}
   for _, item in ipairs(document.articles) do
     if not keys(item, { id = true, url = true, title = true, titleSource = true, tags = true, note = true,
-        isRead = true, createdAt = true, metadataState = true }) then return false end
+        isRead = true, createdAt = true, metadataState = true, favicon = true }) then return false end
+    if item.favicon ~= nil and (type(item.favicon) ~= "string" or not reading.validFavicon(item.favicon)) then return false end
     if type(item.id) ~= "string" or not string.match(item.id, "^[%w-]+$") or #item.id > 100 or ids[item.id] then return false end
     local ok, normalized = pcall(reading.normalize, item.url)
     if not ok or normalized ~= item.url or urls[item.url] then return false end
@@ -102,26 +104,30 @@ local function details(article)
   selected, screen, deletion, errors = article.id, "detail", false, {}
   draft = { url = article.url, title = article.title, tags = table.concat(article.tags, ", "), note = article.note }
 end
+local function metadata(id, result)
+  local index, current = find(id)
+  if not index then return end
+  local candidate = copy()
+  local updated = candidate[index]
+  updated.favicon = result.favicon or updated.favicon
+  updated.metadataState = result.error and "failed" or "available"
+  if not result.error and current.titleSource == "fallback" and current.title == current.url then
+    updated.title, updated.titleSource = result.title, "metadata"
+  end
+  if save(candidate) then
+    if selected == id and draft.title == current.title then draft.title = updated.title end
+    if result.error == "redirect" then message = "Website redirected. Save its final HTTPS URL manually."
+    elseif result.error then message = "Title unavailable. Your saved entry is usable offline; Retry when ready." end
+  end
+  requests[id] = nil
+end
 local function fetch(id)
   local _, article = find(id)
   if not article then return end
   local token = (requests[id] or 0) + 1
   requests[id] = token
   reading.fetch(article.url, function(result)
-    local index, current = find(id)
-    if not index or requests[id] ~= token then return end
-    local candidate = copy()
-    local updated = candidate[index]
-    updated.metadataState = result.error and "failed" or "available"
-    if not result.error and current.titleSource == "fallback" and current.title == article.url then
-      updated.title, updated.titleSource = result.title, "metadata"
-    end
-    if save(candidate) then
-      if selected == id and draft.title == current.title then draft.title = updated.title end
-      if result.error == "redirect" then message = "Website redirected. Save its final HTTPS URL manually."
-      elseif result.error then message = "Title unavailable. Your saved entry is usable offline; Retry when ready." end
-    end
-    requests[id] = nil
+    if requests[id] == token then metadata(id, result) end
   end)
 end
 local function validate_form(editing)
@@ -141,14 +147,48 @@ local function on_event(event)
   local action = string.sub(event.action, 9)
   if event.type == "text" then
     local field = string.match(action, "^field%.(%w+)$")
-    if field then draft[field], errors[field] = event.value, nil end
+    if field then
+      draft[field], errors[field] = event.value, nil
+      if field == "url" and screen == "add" then
+        preview_token = preview_token + 1
+        local token, previous = preview_token, preview
+        preview = nil
+        if previous and previous.cancel and not previous.id then previous.cancel() end
+        if previous and previous.title == draft.title then draft.title = "" end
+        local ok, url = pcall(reading.normalize, event.value)
+        if ok then
+          local pending = { url = url, pending = true }
+          preview = pending
+          pending.cancel = reading.fetch(url, function(result)
+            if pending.id then
+              if requests[pending.id] ~= -token then return end
+            elseif token ~= preview_token then return end
+            local saved_id = pending.id
+            local result_preview = { url = url, title = not result.error and result.title or nil, favicon = result.favicon, error = result.error }
+            if token == preview_token then
+              preview = result_preview
+              if screen == "add" and draft.title == "" and preview.title then draft.title = preview.title end
+            end
+            if saved_id then metadata(saved_id, result) end
+          end)
+        end
+      end
+    end
     return
   end
   if action == "reload" then load(); return end
   if not loaded then return end
   if action == "add" then
+    if preview and preview.cancel and not preview.id then preview.cancel() end
     screen, selected, errors, message = "add", nil, {}, nil
+    preview_token, preview = preview_token + 1, nil
     draft = { url = "", title = "", tags = "", note = "" }
+  elseif action == "paste" and screen == "add" then
+    local ok, value = pcall(reading.clipboard)
+    if not ok then message = "Could not read clipboard. Try pasting into the URL field."
+    elseif trim(value) == "" then message = "No text to paste. Copy a URL first."
+    elseif not pcall(reading.normalize, value) then message = "Clipboard does not contain a valid HTTPS URL."
+    else message = nil; on_event { type = "text", action = "reading.field.url", value = value } end
   elseif action == "back" then screen, deletion, message = "list", false, nil
   elseif action == "save" then
     local form = validate_form(screen == "detail")
@@ -158,11 +198,16 @@ local function on_event(event)
         if article.url == form.url then details(article); message = "Already saved"; return end
       end
       local article = { id = reading.id(), url = form.url, title = form.title ~= "" and form.title or form.url,
-        titleSource = form.title ~= "" and "user" or "fallback", tags = form.tags, note = form.note,
-        isRead = false, createdAt = reading.now(), metadataState = "pending" }
+        titleSource = preview and preview.title == form.title and "metadata" or form.title ~= "" and "user" or "fallback",
+        favicon = preview and preview.favicon, tags = form.tags, note = form.note,
+        isRead = false, createdAt = reading.now(), metadataState = preview and not preview.pending and (preview.error and "failed" or "available") or "pending" }
       local candidate = copy()
       candidate[#candidate + 1] = article
-      if save(candidate) then details(article); fetch(article.id) end
+      if save(candidate) then
+        details(article)
+        if preview and preview.pending then preview.id = article.id; requests[article.id] = -preview_token
+        elseif not preview then fetch(article.id) end
+      end
     else
       local index, current = find(selected)
       if not index then return end
@@ -207,7 +252,7 @@ local function on_event(event)
   end
 end
 local function render()
-  local children = { text("YOUR PERSONAL LIBRARY", "label", "gold"), text("Reading list", "heading"), text("Saved list and notes available offline", "body", "secondary") }
+  local children = { text("Reading list", "heading") }
   if message and loaded then children[#children + 1] = card({ text("Update", "title"), text(message) }, "lightOrange") end
   if not loaded then children[#children + 1] = card({ text("Your library needs attention", "title"), text(message), button("Reload saved articles", "reload") }, "outlined")
   elseif screen == "list" then
@@ -255,11 +300,10 @@ local function render()
     local last_index = page * 20 < #visible and page * 20 or #visible
     for index = (page - 1) * 20 + 1, last_index do
       local item = visible[index]
-      local state = item.metadataState == "pending" and not requests[item.id] and "failed (interrupted; Retry)" or item.metadataState
       children[#children + 1] = ui.listItem { key = "reading." .. item.id, children = {
-        card({ text(item.title, "title"), text(reading.hostname(item.url), "label", "secondary"),
-          text(#item.tags > 0 and table.concat(item.tags, " · ") or "No tags", "label", "gold"),
-          text((item.isRead and "Read" or "Unread") .. " · Title: " .. state, "label", "secondary")
+        card({ text(item.isRead and "Read" or "Unread", item.isRead and "label" or "badge", "secondary"),
+          ui.row { gap = 12, children = { ui.image { url = item.favicon and "data:image/png;base64," .. item.favicon, label = "Website icon", width = 32, height = 32 }, text(item.title, "title") } }, text(reading.hostname(item.url), "label", "secondary"),
+          text(#item.tags > 0 and table.concat(item.tags, " · ") or "No tags", "label", "gold")
         }, "default", "view." .. item.id)
       } }
     end
@@ -270,13 +314,14 @@ local function render()
     local fields = {}
     for _, field in ipairs({ "url", "title", "tags", "note" }) do
       fields[#fields + 1] = ui.textField { label = ({ url = "HTTPS URL", title = "Title", tags = "Tags (comma-separated)", note = "Note" })[field],
-        value = draft[field], action = "reading.field." .. field, error = errors[field], enabled = field ~= "url" or screen == "add", multiline = field == "note" }
+        value = draft[field], action = "reading.field." .. field, error = errors[field], enabled = field ~= "url" or screen == "add", multiline = field == "note",
+        trailingIcon = field == "url" and screen == "add" and ui.iconButton { icon = "paste", label = "Paste URL", action = "reading.paste" } or nil }
     end
     children[#children + 1] = card(fields)
     local _, saved = find(selected)
     local changed = not saved or draft.title ~= saved.title or draft.tags ~= table.concat(saved.tags, ", ") or draft.note ~= saved.note
     children[#children + 1] = ui.button { text = "Save", action = "reading.save", enabled = changed }
-    children[#children + 1] = text("Fetching a title contacts the article's website. Original articles require a connection.", "label", "secondary")
+    children[#children + 1] = text("Fetching a title and favicon contacts the article's website. Original articles require a connection.", "label", "secondary")
     if screen == "detail" then
       local _, item = find(selected)
       local interrupted = item.metadataState == "pending" and not requests[item.id]

@@ -54,6 +54,58 @@ class ReadingListIntegrationTest {
         runCurrent()
     }
 
+    @Test fun `system back action returns add and edit forms to list without saving drafts`() = runTest(main.dispatcher) {
+        var saved: ByteArray? = null
+        val container = com.example.luaplayground.feature.dynamic.LuaContainer(
+            script = { compiled("reading-list.luac") },
+            navigator = AppNavigator,
+            storage = { JsonStore({ saved }, { saved = it.copyOf() }, {}) },
+            io = main.dispatcher,
+            reading = ReadingCapabilities(
+                fetchTitle = { LuaHttpClient.Response(body = "Article") }, openOriginal = {},
+                identifier = { "article-1" }, now = { 1000L },
+            ),
+        )
+        val vm = container.createVm()
+        val owner = ViewModelStore().apply { put("reading", vm) }
+        runCurrent()
+        assertNull(vm.readingBackAction)
+        vm.action("reading.add")
+        runCurrent()
+        assertEquals("reading.back", vm.readingBackAction)
+        vm.input(UiInput.TextChanged("reading.field.note", "Unsaved draft"))
+        vm.action(vm.readingBackAction!!)
+        runCurrent()
+        assertNull(vm.readingBackAction)
+        assertTrue(vm.result.nodes().filterIsInstance<UiNode.TextField>().isEmpty())
+        assertNull(saved)
+
+        vm.action("reading.add")
+        runCurrent()
+        vm.input(UiInput.TextChanged("reading.field.url", "https://example.com/article"))
+        vm.action("reading.save")
+        runCurrent()
+        val beforeEdit = saved!!.copyOf()
+        assertEquals("reading.back", vm.readingBackAction)
+        vm.input(UiInput.TextChanged("reading.field.note", "Unsaved edit"))
+        vm.action(vm.readingBackAction!!)
+        runCurrent()
+        assertNull(vm.readingBackAction)
+        assertTrue(vm.result.nodes().filterIsInstance<UiNode.TextField>().isEmpty())
+        assertArrayEquals(beforeEdit, saved)
+        val texts = vm.result.nodes().filterIsInstance<UiNode.Text>().map { it.text }
+        assertTrue(texts.contains("Article"))
+        assertFalse(texts.any { "Title:" in it })
+        vm.action("reading.view.article-1")
+        runCurrent()
+        assertEquals("reading.back", vm.readingBackAction)
+        vm.action(vm.readingBackAction!!)
+        runCurrent()
+        assertNull(vm.readingBackAction)
+        owner.clear()
+        runCurrent()
+    }
+
     private fun compiled(name: String) = File("build/generated/luaAssets/$name").readBytes()
 }
 

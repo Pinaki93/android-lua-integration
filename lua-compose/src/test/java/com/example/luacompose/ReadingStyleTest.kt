@@ -6,12 +6,38 @@ import org.junit.Test
 import kotlin.math.pow
 
 class ReadingStyleTest {
+    @Test fun `reading images use the bookplate while other images keep the avatar`() {
+        assertEquals(R.drawable.default_reading_icon, defaultImageResource(reading = true))
+        assertEquals(R.drawable.default_avatar, defaultImageResource(reading = false))
+    }
+
+    @Test fun `trailing icon validates type and respects field and button enabled states`() {
+        for ((fieldEnabled, iconEnabled) in listOf(true to true, false to true, true to false)) {
+            val session = LuaSession("""
+                local value = ''
+                return {
+                  render = function() return ui.textField {value=value, label='URL', action='url', enabled=$fieldEnabled,
+                    trailingIcon=ui.iconButton {icon='paste', label='Paste URL', action='paste', enabled=$iconEnabled}} end,
+                  onEvent = function(event) if event.action == 'paste' then value='pasted' end end
+                }
+            """.trimIndent())
+            session.start()
+            val field = (session.dispatch(LuaEvent.Action("paste")) as LuaUiResult.Success).root as UiNode.TextField
+            assertEquals(if (fieldEnabled && iconEnabled) "pasted" else "", field.value)
+            session.close()
+        }
+        for (icon in listOf("false", "ui.text {text='Wrong'}", "ui.iconButton {icon='paste', label='', action='paste'}")) {
+            assertTrue(LuaUiEngine().evaluate("return ui.textField {value='', label='URL', action='url', trailingIcon=$icon}") is LuaUiResult.Failure)
+        }
+    }
+
     @Test fun `new properties parse and old defaults remain`() {
         fun parse(source: String) = (LuaUiEngine().evaluate("return $source") as LuaUiResult.Success).root
         assertEquals(false, (parse("ui.row {}") as UiNode.Row).wrap)
         assertEquals(null, (parse("ui.card {}") as UiNode.Card).action)
         assertEquals(false, (parse("ui.textField {value='', label='Note', action='note'}") as UiNode.TextField).multiline)
         assertEquals(UiTextTone.Default, (parse("ui.text {text='Text'}") as UiNode.Text).tone)
+        assertEquals(UiTextStyle.Badge, (parse("ui.text {text='Unread', style='badge'}") as UiNode.Text).style)
         assertTrue((parse("ui.row {wrap=true}") as UiNode.Row).wrap)
         assertEquals("open", (parse("ui.card {action='open'}") as UiNode.Card).action)
         assertTrue((parse("ui.textField {value='', label='Note', action='note', multiline=true}") as UiNode.TextField).multiline)
@@ -33,6 +59,7 @@ class ReadingStyleTest {
     @Test fun `both palettes pair readable text with every card and button background`() {
         for (dark in listOf(false, true)) {
             val colors = readingColors(dark)
+            assertContrast(colors.onPrimary, colors.primary)
             for (style in UiCardStyle.entries) assertContrast(style.contentColor(colors), style.containerColor(colors))
             for (style in UiButtonStyle.entries.filterNot { it == UiButtonStyle.Quiet }) {
                 assertContrast(style.contentColor(colors), style.containerColor(colors))

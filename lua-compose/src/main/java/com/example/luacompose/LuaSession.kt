@@ -125,6 +125,9 @@ class LuaSession private constructor(
     @Synchronized
     fun dispatch(event: LuaEvent): LuaUiResult {
         val current = result ?: start()
+        if (event.action == "reading.paste") {
+            reading?.log?.invoke("paste: received; terminal=$terminal; admitted=${admits(latest, event)}")
+        }
         if (terminal || !valid(event) || !admits(latest, event)) return current
         try {
             val returned = onEvent!!.invoke(eventTable(event))
@@ -174,7 +177,7 @@ class LuaSession private constructor(
     private fun admits(node: UiNode?, event: LuaEvent): Boolean = when (node) {
         is UiNode.Dialog -> if (event is LuaEvent.Action && event.action == node.dismissAction) true else node.children.any { admits(it, event) }
         is UiNode.Button -> event is LuaEvent.Action && node.enabled && node.action == event.action
-        is UiNode.TextField -> event is LuaEvent.TextChanged && node.enabled && node.action == event.action
+        is UiNode.TextField -> node.enabled && ((event is LuaEvent.TextChanged && node.action == event.action) || admits(node.trailingIcon, event))
         is UiNode.Checkbox -> event is LuaEvent.CheckedChanged && node.enabled && node.action == event.action
         is UiNode.IconButton -> event is LuaEvent.Action && node.enabled && node.action == event.action
         is UiNode.ListItem -> node.children.any { admits(it, event) }
@@ -202,12 +205,14 @@ class LuaSession private constructor(
 
     @Synchronized
     fun complete(id: Long, response: LuaHttpClient.Response): LuaUiResult {
+        reading?.log?.invoke("completion: id=$id; terminal=$terminal; callback=${callbacks.containsKey(id)}; result=${response.error ?: "success"}")
         if (terminal) return failure()
         val callback = callbacks.remove(id) ?: return result ?: failure()
         jobs.remove(id)
         try {
             if (callback.invoke(http?.table(response) ?: LuaTable().apply {
                 set("title", response.body)
+                response.favicon?.let { set("favicon", it) }
                 response.error?.let { set("error", it) }
             }).narg() != 0) {
                 return stop(LuaUiError.Kind.Validation, "HTTP callback must return no values.")
@@ -215,7 +220,7 @@ class LuaSession private constructor(
         } catch (_: Exception) {
             return stop(LuaUiError.Kind.Runtime, "HTTP callback failed.")
         }
-        return render()
+        return render().also { reading?.log?.invoke("completion: id=$id; rendered=${it is LuaUiResult.Success}") }
     }
 
     private fun cancelRequests() {
@@ -252,12 +257,14 @@ class LuaSession private constructor(
         fun function(name: String, count: Int, call: (Varargs) -> Varargs) {
             add(LuaValue.valueOf(name), object : VarArgFunction() {
                 override fun invoke(args: Varargs): Varargs {
-                    if (rendering && name in setOf("fetch", "open", "id", "now")) throw LuaError("reading: unavailable during render")
+                    if (rendering && name in setOf("fetch", "open", "id", "now", "clipboard")) throw LuaError("reading: unavailable during render")
                     if (args.narg() != count) throw LuaError("reading: invalid arguments")
                     return try { call(args) } catch (_: Exception) { throw LuaError("reading: unavailable or invalid input") }
                 }
             })
         }
+        function("clipboard", 0) { LuaValue.valueOf(capability.clipboardText().orEmpty()) }
+        function("validFavicon", 1) { LuaValue.valueOf(SavedFavicon.decode(it.arg1().checkjstring()) != null) }
         function("normalize", 1) { LuaValue.valueOf(ReadingCapabilities.normalize(it.arg1().checkjstring())) }
         function("hostname", 1) { LuaValue.valueOf(ReadingCapabilities.hostname(it.arg1().checkjstring())) }
         function("isArray", 1) { LuaValue.valueOf(it.arg1() is JsonArrayTable) }
@@ -272,14 +279,27 @@ class LuaSession private constructor(
             val callback = args.arg(2).checkfunction()
             val id = ++nextRequest
             callbacks[id] = callback
+            capability.log("fetch: id=$id; pending=${callbacks.size}")
             if (callbacks.size > 4) completed!!(id, LuaHttpClient.Response(error = "pending_limit"))
             else jobs[id] = scope!!.launch {
                 val response = try { capability.fetchTitle(url) }
                 catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { LuaHttpClient.Response(error = "transport") }
+                catch (failure: Exception) {
+                    capability.log("fetch: id=$id; failure=${failure.javaClass.simpleName}")
+                    LuaHttpClient.Response(error = "transport")
+                }
+                capability.log("fetch: id=$id; completed=${response.error ?: "success"}")
                 completed!!(id, response)
             }
-            LuaValue.NONE
+            object : VarArgFunction() {
+                override fun invoke(args: Varargs): Varargs {
+                    if (rendering || args.narg() != 0) throw LuaError("reading: invalid cancellation")
+                    jobs.remove(id)?.cancel()
+                    callbacks.remove(id)
+                    capability.log("fetch: id=$id; cancelled")
+                    return LuaValue.NONE
+                }
+            }
         }
         freeze()
     }

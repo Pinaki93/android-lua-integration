@@ -31,7 +31,11 @@ fun LuaFeature(
 ) {
     val viewModel = viewModel { container.createVm(arguments) }
     val scope = rememberCoroutineScope()
-    BackHandler(enabled = showBack) { scope.launch { container.navigator.popBackStack() } }
+    val readingBackAction = viewModel.readingBackAction
+    BackHandler(enabled = showBack || readingBackAction != null) {
+        if (readingBackAction != null) viewModel.action(readingBackAction)
+        else scope.launch { container.navigator.popBackStack() }
+    }
     Column(
         Modifier
             .fillMaxSize()

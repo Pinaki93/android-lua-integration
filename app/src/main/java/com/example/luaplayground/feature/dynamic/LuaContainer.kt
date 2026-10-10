@@ -116,6 +116,11 @@ class LuaContainerVm internal constructor(
         }
     }
 
+    val readingBackAction: String?
+        get() = ((result as? LuaUiResult.Success)?.root as? UiNode.Column)?.children
+            ?.filterIsInstance<UiNode.Button>()
+            ?.firstOrNull { it.enabled && it.action == "reading.back" }?.action
+
     fun action(action: String) {
         enqueue(LuaEvent.Action(action))
     }

@@ -75,6 +75,7 @@ sealed interface UiNode {
         val error: String? = null,
         val style: UiTextFieldStyle = UiTextFieldStyle.Outlined,
         val multiline: Boolean = false,
+        val trailingIcon: IconButton? = null,
     ) : UiNode
 
     @Immutable
@@ -99,7 +100,7 @@ sealed interface UiNode {
     }
 }
 
-enum class UiIcon { Delete, Add, Check, Close }
+enum class UiIcon { Delete, Add, Check, Close, Paste }
 
 sealed interface UiInput {
     val action: String
@@ -113,6 +114,7 @@ enum class UiTextStyle {
     Title,
     Metric,
     Label,
+    Badge,
     Heading,
 }
 

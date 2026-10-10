@@ -1,6 +1,7 @@
 package com.example.luacompose
 
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -100,6 +101,9 @@ internal fun lazyItemKey(index: Int, node: UiNode): Any =
 
 internal val LocalReadingStyle = compositionLocalOf { false }
 
+internal fun defaultImageResource(reading: Boolean): Int =
+    if (reading) R.drawable.default_reading_icon else R.drawable.default_avatar
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LuaNode(
@@ -146,10 +150,12 @@ private fun LuaNode(
         }
         is UiNode.Text -> Text(
             text = node.text,
-            modifier = modifier,
+            modifier = if (node.style == UiTextStyle.Badge) modifier
+                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                .padding(horizontal = 10.dp, vertical = 4.dp) else modifier,
             style = node.style.textStyle(MaterialTheme.typography),
             textDecoration = TextDecoration.LineThrough.takeIf { node.strikeThrough },
-            color = when (node.tone) {
+            color = if (node.style == UiTextStyle.Badge) MaterialTheme.colorScheme.onPrimary else when (node.tone) {
                 UiTextTone.Default -> androidx.compose.material3.LocalContentColor.current
                 UiTextTone.Secondary -> MaterialTheme.colorScheme.onSurfaceVariant
                 UiTextTone.Accent -> MaterialTheme.colorScheme.primary
@@ -157,11 +163,12 @@ private fun LuaNode(
             },
         )
         is UiNode.Image -> AsyncImage(
-            model = node.url,
+            model = node.url?.let { if (it.startsWith("data:image/png;base64,")) SavedFavicon.decode(it.substringAfter(',')) else it },
             contentDescription = node.label,
             modifier = modifier.size(node.width.dp, node.height.dp)
                 .then(if (node.circleCrop) Modifier.clip(CircleShape) else Modifier),
-            fallback = painterResource(R.drawable.default_avatar),
+            fallback = painterResource(defaultImageResource(LocalReadingStyle.current)),
+            error = if (LocalReadingStyle.current) painterResource(R.drawable.default_reading_icon) else null,
             contentScale = ContentScale.Crop,
         )
         is UiNode.Card -> Card(
@@ -215,6 +222,7 @@ private fun LuaNode(
                     modifier = modifier.then(if (LocalReadingStyle.current) Modifier.fillMaxWidth() else Modifier),
                     enabled = node.enabled,
                     label = { Text(node.label) },
+                    trailingIcon = node.trailingIcon?.let { icon -> ({ LuaNode(icon.copy(enabled = node.enabled && icon.enabled), onAction = onAction, onInput = onInput) }) },
                     singleLine = !node.multiline,
                     minLines = if (node.multiline) 4 else 1,
                     isError = node.error != null,
@@ -235,6 +243,7 @@ private fun LuaNode(
                     modifier = modifier.then(if (LocalReadingStyle.current) Modifier.fillMaxWidth() else Modifier),
                     enabled = node.enabled,
                     label = { Text(node.label) },
+                    trailingIcon = node.trailingIcon?.let { icon -> ({ LuaNode(icon.copy(enabled = node.enabled && icon.enabled), onAction = onAction, onInput = onInput) }) },
                     singleLine = !node.multiline,
                     minLines = if (node.multiline) 4 else 1,
                     isError = node.error != null,
@@ -284,6 +293,7 @@ internal fun UiTextStyle.textStyle(typography: Typography): TextStyle = when (th
     UiTextStyle.Title -> typography.titleLarge
     UiTextStyle.Metric -> typography.headlineMedium
     UiTextStyle.Label -> typography.labelMedium
+    UiTextStyle.Badge -> typography.labelMedium
     UiTextStyle.Heading -> typography.headlineLarge
 }
 
@@ -317,6 +327,7 @@ internal fun UiIcon.imageVector() = when (this) {
     UiIcon.Add -> Icons.Default.Add
     UiIcon.Check -> Icons.Default.Check
     UiIcon.Close -> Icons.Default.Close
+    UiIcon.Paste -> PasteIcon
 }
 
 internal fun action(name: String, onAction: (String) -> Unit, enabled: Boolean = true): () -> Unit = {

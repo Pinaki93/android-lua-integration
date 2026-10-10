@@ -18,11 +18,17 @@ class LuaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        val readingLog: (String) -> Unit = { android.util.Log.d("ReadingAutoFill", it); Unit }
         container = AppContainer(
             assetManager = AssetManager(assets),
             httpClient = httpClient,
             reading = com.example.luacompose.ReadingCapabilities(
-                fetchTitle = com.example.luacompose.ReadingTitleClient()::fetch,
+                log = readingLog,
+                clipboardText = {
+                    val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+                },
+                fetchTitle = com.example.luacompose.ReadingTitleClient(log = readingLog)::fetch,
                 openOriginal = { url ->
                     startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))

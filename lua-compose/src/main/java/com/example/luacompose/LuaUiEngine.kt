@@ -206,7 +206,7 @@ class LuaUiEngine {
                         UiNode.Button(text(table, "text", path), action(table, path), enabled(table, path), buttonStyle(table, path))
                     }
                     "textField" -> {
-                        fields(table, path, "type", "value", "label", "action", "enabled", "error", "style", "multiline")
+                        fields(table, path, "type", "value", "label", "action", "enabled", "error", "style", "multiline", "trailingIcon")
                         UiNode.TextField(
                             value = text(table, "value", path),
                             label = label(table, path),
@@ -215,6 +215,10 @@ class LuaUiEngine {
                             error = optionalText(table, "error", path),
                             style = textFieldStyle(table, path),
                             multiline = optionalBoolean(table, "multiline", path, false),
+                            trailingIcon = table.get("trailingIcon").takeUnless { it.isnil() }?.let {
+                                parse(it, "$path.trailingIcon", depth + 1) as? UiNode.IconButton
+                                    ?: fail(LuaUiError.Kind.Validation, "Trailing icon at $path must be an icon button.")
+                            },
                         )
                     }
                     "checkbox" -> {
@@ -271,6 +275,13 @@ class LuaUiEngine {
         }
 
         private fun imageUrl(table: LuaTable, path: String): String {
+            val raw = table.get("url").checkjstring()
+            if (raw.startsWith("data:image/")) {
+                if (!raw.startsWith("data:image/png;base64,") || SavedFavicon.decode(raw.substringAfter(',')) == null) {
+                    fail(LuaUiError.Kind.Validation, "Invalid saved favicon at $path.")
+                }
+                return raw
+            }
             val url = text(table, "url", path)
             val uri = try { URI(url) } catch (_: java.net.URISyntaxException) { null }
             if (uri == null || uri.scheme != "https" || uri.host.isNullOrEmpty() ||
@@ -307,6 +318,7 @@ class LuaUiEngine {
                 "title" -> UiTextStyle.Title
                 "metric" -> UiTextStyle.Metric
                 "label" -> UiTextStyle.Label
+                "badge" -> UiTextStyle.Badge
                 "heading" -> UiTextStyle.Heading
                 else -> fail(LuaUiError.Kind.Validation, "Unknown style '$style' at $path.")
             }

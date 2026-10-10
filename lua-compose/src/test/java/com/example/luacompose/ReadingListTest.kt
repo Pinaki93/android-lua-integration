@@ -28,14 +28,19 @@ class ReadingListTest {
     private class Harness(val scope: TestScope, val memory: Memory = Memory(), compiled: Boolean = false,
         identifier: (() -> String)? = null) {
         val requests = mutableListOf<String>()
+        val logs = mutableListOf<String>()
         val completions = mutableListOf<Pair<Long, LuaHttpClient.Response>>()
         val browsers = mutableListOf<String>()
+        var clipboard: String? = null
+        var clipboardReads = 0
+        var clipboardFailure = false
         var browserFailure = false
         var nextId = 0
         var instant = 1000L
         var cancelled = 0
         var reply: suspend (String) -> LuaHttpClient.Response = { LuaHttpClient.Response(error = "transport") }
         val capability = ReadingCapabilities(
+            log = { logs += it },
             fetchTitle = { url ->
                 requests += url
                 try { reply(url) } catch (cancelled: CancellationException) { this.cancelled++; throw cancelled }
@@ -43,6 +48,7 @@ class ReadingListTest {
             openOriginal = { if (browserFailure) error("no browser"); browsers += it },
             identifier = identifier ?: { "id-${++nextId}" },
             now = { instant },
+            clipboardText = { clipboardReads++; if (clipboardFailure) error("unavailable"); clipboard },
         )
         val session = if (compiled) LuaSession(
             compile(File("../lua/reading-list.lua").readText()), { memory.store },
@@ -75,6 +81,189 @@ class ReadingListTest {
             }
         }
         fun value(field: String) = nodes().filterIsInstance<UiNode.TextField>().single { it.action == "reading.field.$field" }.value
+    }
+
+    @Test fun `unread badge sits above the listing title and read status stays plain`() = runTest {
+        val h = Harness(this)
+        h.add(title = "Article")
+        h.action("back")
+        fun status(): UiNode.Text {
+            val item = h.nodes().filterIsInstance<UiNode.ListItem>().single()
+            val column = (item.children.single() as UiNode.Card).children.single() as UiNode.Column
+            val title = (column.children[1] as UiNode.Row).children.filterIsInstance<UiNode.Text>().single()
+            assertEquals("Article", title.text)
+            return column.children.first() as UiNode.Text
+        }
+        assertEquals(UiNode.Text("Unread", UiTextStyle.Badge, tone = UiTextTone.Secondary), status())
+        h.action("view.id-1")
+        h.action("toggle")
+        h.action("back")
+        assertEquals(UiNode.Text("Read", UiTextStyle.Label, tone = UiTextTone.Secondary), status())
+        h.session.close()
+    }
+
+    @Test fun `paste icon stays inside URL field only in add form`() = runTest {
+        val h = Harness(this, compiled = true)
+        h.action("add")
+        for (url in listOf("", "invalid", "http://example.com", "https://example.com/article")) {
+            h.field("url", url)
+            val field = h.nodes().filterIsInstance<UiNode.TextField>().single { it.action == "reading.field.url" }
+            assertEquals(UiNode.IconButton(UiIcon.Paste, "Paste URL", "reading.paste"), field.trailingIcon)
+            assertTrue(h.nodes().filterIsInstance<UiNode.Button>().none { it.text in listOf("Paste", "Auto fill") })
+        }
+        assertEquals(0, h.clipboardReads)
+        h.action("save")
+        assertNull(h.nodes().filterIsInstance<UiNode.TextField>().single { it.action == "reading.field.url" }.trailingIcon)
+        h.session.close()
+    }
+
+    @Test fun `paste replaces existing URL only with valid clipboard URL`() = runTest {
+        val h = Harness(this)
+        h.action("add"); h.field("url", "https://example.com/old")
+        for (value in listOf(null, "", "invalid", "http://example.com", "https://user@example.com", "https://example.com:8443")) {
+            h.clipboard = value; h.action("paste")
+            assertEquals("https://example.com/old", h.value("url"))
+        }
+        h.clipboardFailure = true; h.action("paste")
+        assertEquals("https://example.com/old", h.value("url"))
+        h.clipboardFailure = false
+        h.clipboard = "https://example.com/new"; h.action("paste")
+        assertEquals(h.clipboard, h.value("url"))
+        runCurrent()
+        assertEquals(listOf("https://example.com/new"), h.requests)
+        assertEquals(0, h.memory.writes)
+        h.session.close()
+    }
+
+    @Test fun `paste handles missing failed and invalid clipboard without saving`() = runTest {
+        val h = Harness(this)
+        h.action("add"); h.action("paste")
+        assertEquals("", h.value("url"))
+        assertTrue(h.texts().contains("No text to paste. Copy a URL first."))
+        h.clipboard = "   "; h.action("paste")
+        assertEquals("", h.value("url"))
+        h.clipboardFailure = true; h.action("paste")
+        assertTrue(h.texts().contains("Could not read clipboard. Try pasting into the URL field."))
+        h.clipboardFailure = false; h.clipboard = "invalid"; h.action("paste")
+        assertEquals("", h.value("url"))
+        h.action("autofill"); runCurrent()
+        assertTrue(h.requests.isEmpty())
+        assertEquals(0, h.memory.writes)
+        h.session.close()
+    }
+
+    @Test fun `paste cancels superseded drafts instead of exhausting pending requests`() = runTest {
+        val h = Harness(this, compiled = true)
+        h.reply = { awaitCancellation() }
+        h.action("add")
+        for (index in 1..6) {
+            h.field("url", "https://example.com/$index")
+            runCurrent()
+        }
+        assertEquals(6, h.requests.size)
+        assertEquals(5, h.cancelled)
+        assertTrue(h.completions.isEmpty())
+        h.reply = { LuaHttpClient.Response(body = "Fetched title") }
+        h.clipboard = h.value("url"); h.action("paste"); runCurrent(); h.deliver()
+        assertEquals(6, h.cancelled)
+        assertEquals("Fetched title", h.value("title"))
+        assertEquals(0, h.memory.writes)
+        h.session.close()
+    }
+
+    @Test fun `paste logs action requests failure and callback without draft content`() = runTest {
+        val h = Harness(this)
+        h.action("add"); h.field("url", "https://example.com/private?secret=token")
+        h.clipboard = h.value("url"); h.action("paste"); runCurrent(); h.deliver()
+        assertTrue(h.logs.any { it.startsWith("paste: received;") && it.endsWith("admitted=true") })
+        assertTrue(h.logs.any { it.startsWith("fetch:") && it.endsWith("cancelled") })
+        assertTrue(h.logs.any { it.endsWith("completed=transport") })
+        assertTrue(h.logs.any { it.startsWith("completion:") && it.endsWith("rendered=true") })
+        assertTrue(h.logs.none { it.contains("example.com") || it.contains("secret") || it.contains("token") })
+        h.session.close()
+    }
+
+    @Test fun `repeated paste reuses metadata flow and preserves manual edits`() = runTest {
+        val h = Harness(this)
+        h.clipboard = "https://example.com/article"
+        h.reply = { LuaHttpClient.Response(body = "First title") }
+        h.action("add"); h.action("paste"); runCurrent(); h.deliver()
+        assertEquals(h.clipboard, h.value("url"))
+        assertEquals("First title", h.value("title"))
+        h.reply = { LuaHttpClient.Response(body = "Refreshed title") }
+        h.clipboard = h.value("url"); h.action("paste"); runCurrent(); h.deliver()
+        assertEquals("Refreshed title", h.value("title"))
+        h.field("title", "My title"); h.field("tags", "Lua"); h.field("note", "My note")
+        h.clipboard = h.value("url"); h.action("paste"); runCurrent(); h.deliver()
+        assertEquals("My title", h.value("title"))
+        assertEquals("Lua", h.value("tags"))
+        assertEquals("My note", h.value("note"))
+        assertEquals(0, h.memory.writes)
+        h.action("save")
+        assertEquals("My title", h.memory.article()["title"]!!.jsonPrimitive.content)
+        h.session.close()
+    }
+
+    @Test fun `invalid URL and a new add form cancel unsaved metadata`() = runTest {
+        val h = Harness(this)
+        h.reply = { awaitCancellation() }
+        h.action("add"); h.field("url", "https://example.com/old"); runCurrent()
+        h.field("url", "invalid"); runCurrent()
+        assertEquals(1, h.cancelled)
+        h.field("url", "https://example.com/new"); runCurrent()
+        h.action("back"); h.action("add"); runCurrent()
+        assertEquals(2, h.cancelled)
+        assertTrue(h.completions.isEmpty())
+        assertEquals("", h.value("title"))
+        assertEquals(0, h.memory.writes)
+        h.session.close()
+    }
+
+    @Test fun `paste fetches before save and persists title and favicon for offline dashboard`() = runTest {
+        val h = Harness(this)
+        val icon = java.util.Base64.getEncoder().encodeToString(byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10))
+        h.reply = { LuaHttpClient.Response(body = "Fetched on paste", favicon = icon) }
+        h.action("add"); h.field("url", "https://example.com/article")
+        runCurrent()
+        assertEquals(listOf("https://example.com/article"), h.requests)
+        assertEquals(0, h.memory.writes)
+        h.deliver()
+        assertEquals("Fetched on paste", h.value("title"))
+        h.action("save")
+        assertEquals("metadata", h.memory.article()["titleSource"]!!.jsonPrimitive.content)
+        assertEquals(icon, h.memory.article()["favicon"]!!.jsonPrimitive.content)
+        h.session.close()
+        val restored = Harness(this, h.memory, compiled = true)
+        assertEquals("data:image/png;base64,$icon", restored.nodes().filterIsInstance<UiNode.Image>().single().url)
+        restored.session.close()
+    }
+
+    @Test fun `favicon survives title failure and late metadata cannot restore a deleted article`() = runTest {
+        val h = Harness(this)
+        val icon = java.util.Base64.getEncoder().encodeToString(byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10))
+        h.reply = { LuaHttpClient.Response(error = "missing_title", favicon = icon) }
+        h.add(); runCurrent(); h.deliver()
+        assertEquals(icon, h.memory.article()["favicon"]!!.jsonPrimitive.content)
+        assertEquals("failed", h.memory.article()["metadataState"]!!.jsonPrimitive.content)
+        h.add("https://example.com/second"); runCurrent()
+        h.action("delete"); h.action("confirmDelete")
+        val before = h.memory.snapshot()
+        h.deliver()
+        assertEquals(before, h.memory.snapshot())
+        h.session.close()
+    }
+
+    @Test fun `changed URLs and manual titles ignore stale paste results`() = runTest {
+        val h = Harness(this)
+        h.reply = { LuaHttpClient.Response(body = it.substringAfterLast('/')) }
+        h.action("add"); h.field("url", "https://example.com/old"); runCurrent()
+        h.field("url", "https://example.com/new"); h.field("title", "My title"); runCurrent()
+        h.deliver(); assertEquals("My title", h.value("title"))
+        h.deliver(); assertEquals("My title", h.value("title"))
+        h.action("save")
+        assertEquals("user", h.memory.article()["titleSource"]!!.jsonPrimitive.content)
+        assertEquals("https://example.com/new", h.memory.article()["url"]!!.jsonPrimitive.content)
+        h.session.close()
     }
 
     @Test fun `editorial states expose selected filters clickable cards and multiline notes`() = runTest {
@@ -134,13 +323,15 @@ class ReadingListTest {
         restored.session.close()
     }
 
-    @Test fun `invalid URL and oversized fields preserve form and never write or fetch`() = runTest {
+    @Test fun `invalid URL never fetches and oversized fields never save`() = runTest {
         val h = Harness(this)
         for (url in listOf("", "http://example.com", "https://u:p@example.com", "https://example.com:444", "//example.com", "https://example.com/" + "a".repeat(2049))) {
             h.add(url)
             assertEquals(url, h.value("url"))
             assertTrue(h.nodes().filterIsInstance<UiNode.TextField>().any { it.error != null })
         }
+        runCurrent()
+        assertTrue(h.requests.isEmpty())
         for ((field, value) in listOf("title" to "😀".repeat(301), "note" to "a".repeat(4001), "tags" to "a,b,c,d,e,f", "tags" to "x".repeat(31))) {
             h.action("back"); h.action("add"); h.field("url", "https://example.com"); h.field(field, value); h.action("save")
             assertEquals(value, h.value(field))
@@ -148,7 +339,8 @@ class ReadingListTest {
         }
         assertEquals(0, h.memory.writes)
         runCurrent()
-        assertTrue(h.requests.isEmpty())
+        assertEquals(1, h.requests.size)
+        h.session.close()
     }
 
     @Test fun `field limits accept Unicode at the boundary`() = runTest {
@@ -169,7 +361,7 @@ class ReadingListTest {
         assertEquals("Keep me", h.value("note"))
         assertTrue(h.texts().contains("Already saved"))
         runCurrent()
-        assertEquals(1, h.requests.size)
+        assertEquals(2, h.requests.size)
         h.deliver()
     }
 
@@ -505,9 +697,11 @@ class ReadingListTest {
         assertFalse(restored.texts().contains("Two"))
     }
 
-    @Test fun `compiled script exposes required fields actions and offline wording`() = runTest {
+    @Test fun `compiled script exposes required fields and actions without removed list labels`() = runTest {
         val h = Harness(this, compiled = true)
-        assertTrue(h.texts().containsAll(listOf("Reading list", "Saved list and notes available offline", "Add article")))
+        assertTrue(h.texts().containsAll(listOf("Reading list", "Add article")))
+        assertFalse(h.texts().contains("YOUR PERSONAL LIBRARY"))
+        assertFalse(h.texts().contains("Saved list and notes available offline"))
         h.action("add")
         assertEquals(listOf("HTTPS URL", "Title", "Tags (comma-separated)", "Note"), h.nodes().filterIsInstance<UiNode.TextField>().map { it.label })
         h.field("url", "https://example.com"); h.action("save")
@@ -515,6 +709,10 @@ class ReadingListTest {
         h.action("toggle")
         assertTrue(h.texts().contains("Mark unread"))
         assertTrue(h.memory.article()["isRead"]!!.jsonPrimitive.boolean)
+        h.action("back")
+        assertTrue(h.texts().contains("Read"))
+        assertFalse(h.texts().any { "Title:" in it })
+        h.action("view.id-1")
         h.action("delete")
         assertTrue(h.texts().containsAll(listOf("Cancel", "Delete")))
         h.session.close()
@@ -538,5 +736,5 @@ private fun compile(source: String): ByteArray {
 private fun UiNode.ListItem.articleTitle(): String {
     val card = children.single() as UiNode.Card
     val content = card.children.single() as UiNode.Column
-    return (content.children.first() as UiNode.Text).text
+    return content.flatten().filterIsInstance<UiNode.Text>().single { it.style == UiTextStyle.Title }.text
 }

@@ -24,6 +24,7 @@ class LuaHttpClient(client: HttpClient, private val permits: (HttpMethod, Url) -
         val headers: Map<String, String> = emptyMap(),
         val body: String = "",
         val error: String? = null,
+        val favicon: String? = null,
     )
     internal class Failure(val code: String) : RuntimeException(code)
 
