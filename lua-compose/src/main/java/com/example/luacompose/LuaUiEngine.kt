@@ -114,7 +114,7 @@ class LuaUiEngine {
     }
 
     internal fun uiTable() = FrozenTable().apply {
-        listOf("dialog", "column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
+        listOf("scaffold", "toolbar", "alert", "snackbar", "dialog", "column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
             add(LuaValue.valueOf(type), NodeConstructor(type))
         }
         freeze()
@@ -163,6 +163,34 @@ class LuaUiEngine {
             try {
                 val type = requiredString(table, "type", path)
                 return when (type) {
+                    "scaffold" -> {
+                        fields(table, path, "type", "content", "toolbar", "alert", "snackbar")
+                        UiNode.Scaffold(
+                            parse(table.get("content"), "$path.content", depth + 1),
+                            optionalNode<UiNode.Toolbar>(table, "toolbar", path, depth),
+                            optionalNode<UiNode.Alert>(table, "alert", path, depth),
+                            optionalNode<UiNode.Snackbar>(table, "snackbar", path, depth),
+                        )
+                    }
+                    "toolbar" -> {
+                        fields(table, path, "type", "title", "backAction", "children", "overflow")
+                        val visible = children(table, path, depth)
+                        val overflow = children(table, path, depth, "overflow")
+                        if (visible.any { it !is UiNode.Button && it !is UiNode.IconButton } || overflow.any { it !is UiNode.Button }) {
+                            fail(LuaUiError.Kind.Validation, "Toolbar menus must contain buttons; overflow requires text buttons.")
+                        }
+                        UiNode.Toolbar(text(table, "title", path), if (table.get("backAction").isnil()) null else namedAction(table, "backAction", path), visible, overflow)
+                    }
+                    "alert" -> {
+                        fields(table, path, "type", "title", "subtitle", "positive", "negative", "dismissAction")
+                        UiNode.Alert(optionalText(table, "title", path), optionalText(table, "subtitle", path),
+                            optionalNode<UiNode.Button>(table, "positive", path, depth),
+                            optionalNode<UiNode.Button>(table, "negative", path, depth), namedAction(table, "dismissAction", path))
+                    }
+                    "snackbar" -> {
+                        fields(table, path, "type", "text", "dismissAction")
+                        UiNode.Snackbar(text(table, "text", path), namedAction(table, "dismissAction", path))
+                    }
                     "dialog" -> {
                         fields(table, path, "type", "title", "children", "dismissAction")
                         val dismiss = table.get("dismissAction")
@@ -257,8 +285,14 @@ class LuaUiEngine {
             if (unknown != null) fail(LuaUiError.Kind.Validation, "Unknown field '$unknown' at $path.")
         }
 
-        private fun children(table: LuaTable, path: String, depth: Int): List<UiNode> {
-            val value = table.get("children")
+        private inline fun <reified T : UiNode> optionalNode(table: LuaTable, field: String, path: String, depth: Int): T? {
+            if (table.get(field).isnil()) return null
+            return parse(table.get(field), "$path.$field", depth + 1) as? T
+                ?: fail(LuaUiError.Kind.Validation, "Invalid '$field' node at $path.")
+        }
+
+        private fun children(table: LuaTable, path: String, depth: Int, field: String = "children"): List<UiNode> {
+            val value = table.get(field)
             if (value.isnil()) return emptyList()
             if (!value.istable()) fail(LuaUiError.Kind.Validation, "Field 'children' at $path must be a table.")
             val children = value.checktable()
@@ -271,7 +305,7 @@ class LuaUiEngine {
             if (indexes != (1..indexes.size).toList()) {
                 fail(LuaUiError.Kind.Validation, "Children at $path must be a contiguous list.")
             }
-            return indexes.map { index -> parse(children.get(index), "$path.children[$index]", depth + 1) }
+            return indexes.map { index -> parse(children.get(index), "$path.$field[$index]", depth + 1) }
         }
 
         private fun imageUrl(table: LuaTable, path: String): String {

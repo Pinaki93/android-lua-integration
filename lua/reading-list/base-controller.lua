@@ -6,12 +6,17 @@ function BaseController.new()
   local interactor = ReadingInteractor.new()
   local view = { articles = {}, loaded = false, message = nil }
   view.find = interactor.find
+  local scaffold = {}
+  function scaffold.showSnackbar(message) view.message = message end
+  function scaffold.showAlert(alert) scaffold.alert = alert end
+  function scaffold.dismissAlert() scaffold.alert = nil end
+  view.scaffold = scaffold
 
   local function refresh(failure, message)
     view.articles = interactor.articles()
-    view.message = failure == "load"
+    scaffold.showSnackbar(failure == "load"
       and "Could not load saved articles. Reload to recover; your document has not been reset."
-      or message
+      or message)
   end
 
   local function load()
@@ -23,6 +28,7 @@ function BaseController.new()
   load()
 
   return {
+    scaffold = scaffold,
     interactor = interactor,
     view = view,
     refresh = refresh,

@@ -74,6 +74,10 @@ class ReadingListTest {
         }
         fun texts() = nodes().mapNotNull {
             when (it) {
+                is UiNode.Toolbar -> it.title
+                is UiNode.IconButton -> it.label
+                is UiNode.Alert -> it.subtitle
+                is UiNode.Snackbar -> it.text
                 is UiNode.Text -> it.text
                 is UiNode.Button -> it.text
                 is UiNode.TextField -> it.error
@@ -268,7 +272,7 @@ class ReadingListTest {
 
     @Test fun `editorial states expose selected filters clickable cards and multiline notes`() = runTest {
         val h = Harness(this)
-        assertTrue(h.nodes().filterIsInstance<UiNode.Text>().any { it.style == UiTextStyle.Heading })
+        assertEquals("Reading List", h.nodes().filterIsInstance<UiNode.Toolbar>().single().title)
         assertTrue(h.nodes().filterIsInstance<UiNode.Card>().any { it.style == UiCardStyle.Subtle })
         assertEquals(2, h.nodes().filterIsInstance<UiNode.Button>().count { it.style == UiButtonStyle.Selected })
         assertTrue(h.nodes().filterIsInstance<UiNode.Row>().all { it.wrap })
@@ -317,7 +321,7 @@ class ReadingListTest {
         assertEquals("My title", restored.value("title"))
         assertEquals("My offline note", restored.value("note"))
         assertEquals("Tech, Kotlin", restored.value("tags"))
-        assertTrue(restored.texts().contains("Title: failed (interrupted; Retry)"))
+        assertFalse(restored.texts().any { it == "Unread" || it.startsWith("Title:") })
         runCurrent()
         assertTrue(restored.requests.isEmpty())
         restored.session.close()
@@ -431,8 +435,8 @@ class ReadingListTest {
         h.reply = { LuaHttpClient.Response(body = "Too late") }
         h.add(title = "Delete this"); runCurrent()
         h.action("delete")
-        assertEquals("Delete article?", h.nodes().filterIsInstance<UiNode.Dialog>().single().title)
-        assertTrue(h.texts().contains("Delete this"))
+        assertEquals("Delete article?", h.nodes().filterIsInstance<UiNode.Alert>().single().title)
+        assertTrue(h.texts().any { it.contains("Delete this") })
         h.action("cancelDelete")
         assertEquals(1, h.memory.articles().size)
         h.action("delete"); h.action("confirmDelete")
@@ -697,17 +701,52 @@ class ReadingListTest {
         assertFalse(restored.texts().contains("Two"))
     }
 
+    @Test fun `toolbar owns add navigation and edit overflow while dialogs block the screen`() = runTest {
+        val h = Harness(this)
+        var toolbar = h.nodes().filterIsInstance<UiNode.Toolbar>().single()
+        assertEquals("Reading List", toolbar.title)
+        assertNull(toolbar.backAction)
+        assertEquals(listOf("reading.add"), toolbar.children.filterIsInstance<UiNode.IconButton>().map { it.action })
+        assertTrue(h.nodes().filterIsInstance<UiNode.Button>().none { it.action == "reading.add" })
+        h.action("add")
+        toolbar = h.nodes().filterIsInstance<UiNode.Toolbar>().single()
+        assertEquals("Add Article", toolbar.title)
+        assertEquals("reading.back", toolbar.backAction)
+        assertTrue(toolbar.overflow.isEmpty())
+        h.field("url", "https://example.com/article"); h.action("save")
+        toolbar = h.nodes().filterIsInstance<UiNode.Toolbar>().single()
+        assertEquals("Edit Article", toolbar.title)
+        assertEquals(listOf("reading.toggle", "reading.open", "reading.retry", "reading.delete"), toolbar.overflow.filterIsInstance<UiNode.Button>().map { it.action })
+        assertEquals(UiButtonStyle.Destructive, toolbar.overflow.filterIsInstance<UiNode.Button>().single { it.action == "reading.delete" }.style)
+        val content = ((h.result as LuaUiResult.Success).root as UiNode.Scaffold).content.flatten()
+        assertTrue(content.filterIsInstance<UiNode.Button>().none { it.action in listOf("reading.toggle", "reading.open", "reading.retry", "reading.delete") })
+        h.browserFailure = true; h.action("open")
+        assertNotNull(((h.result as LuaUiResult.Success).root as UiNode.Scaffold).snackbar)
+        h.action("dismissSnackbar")
+        assertNull(((h.result as LuaUiResult.Success).root as UiNode.Scaffold).snackbar)
+        h.action("delete")
+        val before = h.memory.snapshot()
+        h.action("back"); h.action("open"); h.action("toggle")
+        assertEquals(before, h.memory.snapshot())
+        assertNotNull(((h.result as LuaUiResult.Success).root as UiNode.Scaffold).alert)
+        h.action("cancelDelete")
+        assertNull(((h.result as LuaUiResult.Success).root as UiNode.Scaffold).alert)
+        h.session.close()
+    }
+
     @Test fun `compiled script exposes required fields and actions without removed list labels`() = runTest {
         val h = Harness(this, compiled = true)
-        assertTrue(h.texts().containsAll(listOf("Reading list", "Add article")))
+        assertTrue(h.texts().containsAll(listOf("Reading List", "Add article")))
         assertFalse(h.texts().contains("YOUR PERSONAL LIBRARY"))
         assertFalse(h.texts().contains("Saved list and notes available offline"))
         h.action("add")
         assertEquals(listOf("HTTPS URL", "Title", "Tags (comma-separated)", "Note"), h.nodes().filterIsInstance<UiNode.TextField>().map { it.label })
         h.field("url", "https://example.com"); h.action("save")
         assertTrue(h.texts().containsAll(listOf("Mark read", "Retry title", "Open original", "Delete article")))
+        assertFalse(h.texts().any { it == "Unread" || it.startsWith("Title:") })
         h.action("toggle")
         assertTrue(h.texts().contains("Mark unread"))
+        assertFalse(h.texts().any { it == "Read" || it.startsWith("Title:") })
         assertTrue(h.memory.article()["isRead"]!!.jsonPrimitive.boolean)
         h.action("back")
         assertTrue(h.texts().contains("Read"))
@@ -720,6 +759,9 @@ class ReadingListTest {
 }
 
 private fun UiNode.flatten(): List<UiNode> = listOf(this) + when (this) {
+    is UiNode.Scaffold -> listOfNotNull(content, toolbar, alert, snackbar).flatMap { it.flatten() }
+    is UiNode.Toolbar -> (children + overflow).flatMap { it.flatten() }
+    is UiNode.Alert -> listOfNotNull(positive, negative).flatMap { it.flatten() }
     is UiNode.Column -> children.flatMap { it.flatten() }
     is UiNode.Row -> children.flatMap { it.flatten() }
     is UiNode.Card -> children.flatMap { it.flatten() }

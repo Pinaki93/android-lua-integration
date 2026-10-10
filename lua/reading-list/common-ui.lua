@@ -21,10 +21,7 @@ function CommonUi.filter(label, action, selected)
 end
 
 function CommonUi.children(view)
-  local children = { CommonUi.text("Reading list", "heading") }
-  if view.message and view.loaded then
-    children[#children + 1] = CommonUi.card({ CommonUi.text("Update", "title"), CommonUi.text(view.message) }, "lightOrange")
-  end
+  local children = {}
   if not view.loaded then
     children[#children + 1] = CommonUi.card({
       CommonUi.text("Your library needs attention", "title"),
@@ -33,6 +30,15 @@ function CommonUi.children(view)
     }, "outlined")
   end
   return children
+end
+
+function CommonUi.scaffold(view, content, toolbar)
+  return ui.scaffold {
+    content = content,
+    toolbar = toolbar,
+    alert = view.scaffold.alert,
+    snackbar = view.message and view.loaded and ui.snackbar { text = view.message, dismissAction = "reading.dismissSnackbar" } or nil,
+  }
 end
 
 return CommonUi

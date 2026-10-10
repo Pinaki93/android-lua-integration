@@ -119,9 +119,12 @@ class LuaContainerVm internal constructor(
     }
 
     val readingBackAction: String?
-        get() = ((result as? LuaUiResult.Success)?.root as? UiNode.Column)?.children
-            ?.filterIsInstance<UiNode.Button>()
-            ?.firstOrNull { it.enabled && it.action == "reading.back" }?.action
+        get() {
+            val root = (result as? LuaUiResult.Success)?.root
+            if (root is UiNode.Scaffold) return root.alert?.dismissAction ?: root.toolbar?.backAction
+            return (root as? UiNode.Column)?.children?.filterIsInstance<UiNode.Button>()
+                ?.firstOrNull { it.enabled && it.action == "reading.back" }?.action
+        }
 
     fun resume() {
         events.trySend(QueuedEvent.Resume)
@@ -164,6 +167,7 @@ class LuaContainerVm internal constructor(
 }
 
 private fun UiNode.withInput(input: UiInput): UiNode = when (this) {
+    is UiNode.Scaffold -> if (alert == null) copy(content = content.withInput(input)) else this
     is UiNode.Card -> UiNode.Card(children.map { it.withInput(input) }, style, action)
     is UiNode.Column -> UiNode.Column(children.map { it.withInput(input) }, gap)
     is UiNode.Row -> UiNode.Row(children.map { it.withInput(input) }, gap, wrap)

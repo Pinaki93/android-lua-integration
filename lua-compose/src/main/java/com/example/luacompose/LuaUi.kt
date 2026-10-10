@@ -22,6 +22,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -59,6 +77,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 
 @Composable
 fun LuaUi(
@@ -70,6 +89,10 @@ fun LuaUi(
 ) {
     when (result) {
         is LuaUiResult.Success -> {
+            if (result.root is UiNode.Scaffold) {
+                LuaScaffold(result.root, onAction, onInput, modifier, lazy)
+                return
+            }
             val root = lazyRoot(result.root, lazy)
             if (root != null) {
                 LazyColumn(
@@ -113,6 +136,16 @@ private fun LuaNode(
     modifier: Modifier = Modifier,
 ) {
     when (node) {
+        is UiNode.Scaffold -> LuaScaffold(node, onAction, onInput, modifier, false)
+        is UiNode.Toolbar -> LuaToolbar(node, onAction)
+        is UiNode.Alert -> AlertDialog(
+            onDismissRequest = { onAction(node.dismissAction) },
+            title = node.title?.let { { Text(it) } },
+            text = node.subtitle?.let { { Text(it) } },
+            confirmButton = { node.positive?.let { LuaNode(it, onAction, onInput) } },
+            dismissButton = node.negative?.let { { LuaNode(it, onAction, onInput) } },
+        )
+        is UiNode.Snackbar -> Snackbar { Text(node.text) }
         is UiNode.Dialog -> androidx.compose.ui.window.Dialog(onDismissRequest = { onAction(node.dismissAction) }) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)) {
                 Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -285,6 +318,65 @@ private fun LuaNode(
         }
     }
 }
+
+@Composable
+private fun LuaScaffold(node: UiNode.Scaffold, onAction: (String) -> Unit, onInput: (UiInput) -> Unit, modifier: Modifier, lazy: Boolean) {
+    val host = remember { SnackbarHostState() }
+    LaunchedEffect(node.snackbar, node.alert) {
+        node.snackbar?.takeIf { node.alert == null }?.let {
+            host.showSnackbar(it.text, withDismissAction = true)
+            onAction(it.dismissAction)
+        }
+    }
+    Scaffold(
+        modifier = modifier,
+        topBar = { node.toolbar?.let { LuaToolbar(it, onAction) } },
+        snackbarHost = { SnackbarHost(host) },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+    ) { padding ->
+        LuaUi(LuaUiResult.Success(node.content), onAction, Modifier.fillMaxSize().padding(padding).padding(24.dp), onInput, lazy)
+    }
+    node.alert?.let { LuaNode(it, onAction, onInput) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LuaToolbar(node: UiNode.Toolbar, onAction: (String) -> Unit) {
+    var expanded by remember(node) { mutableStateOf(false) }
+    val toolbarColor = LocalToolbarColor.current ?: MaterialTheme.colorScheme.surface
+    val contentColor = toolbarContentColor(toolbarColor)
+    TopAppBar(
+        title = { Text(node.title) },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = toolbarColor,
+            titleContentColor = contentColor,
+            navigationIconContentColor = contentColor,
+            actionIconContentColor = contentColor,
+        ),
+        navigationIcon = {
+            node.backAction?.let { back ->
+                IconButton(onClick = { onAction(back) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            }
+        },
+        actions = {
+            node.children.forEach { LuaNode(it, onAction, {}) }
+            if (node.overflow.isNotEmpty()) {
+                IconButton(modifier = Modifier.padding(end = 12.dp), onClick = { expanded = true }) { Icon(Icons.Default.MoreVert, "More options") }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    node.overflow.filterIsInstance<UiNode.Button>().forEach { item ->
+                        DropdownMenuItem(text = { Text(item.text) }, enabled = item.enabled, onClick = {
+                            expanded = false
+                            action(item.action, onAction, item.enabled)()
+                        })
+                    }
+                }
+            }
+        },
+    )
+}
+
+fun toolbarContentColor(background: Color): Color =
+    if (background.luminance() > 0.179f) Color.Black else Color.White
 
 internal fun Int.toDp(): Dp = dp
 

@@ -6,6 +6,19 @@ import org.junit.Test
 import kotlin.math.pow
 
 class ReadingStyleTest {
+    @Test fun `toolbar and status icons use dark content on light colors and white on dark colors`() {
+        assertEquals(Color.Black, toolbarContentColor(Color(0xFFEEECE6)))
+        assertEquals(Color.White, toolbarContentColor(Color(0xFF101A16)))
+        assertEquals(Color.Black, toolbarContentColor(Color.White))
+        assertEquals(Color.White, toolbarContentColor(Color.Black))
+    }
+
+    @Test fun `custom toolbar colors keep text readable on light and dark backgrounds`() {
+        for (background in listOf(Color(0xFFEEECE6), Color(0xFF101A16), Color.Black, Color.White)) {
+            assertContrast(toolbarContentColor(background), background)
+        }
+    }
+
     @Test fun `feature themes override supported colors and retain unspecified colors`() {
         val base = readingColors(false)
         val colors = base.withFeatureColors(mapOf("primary" to 0xFF123456L, "secondary" to 0xFF654321L))

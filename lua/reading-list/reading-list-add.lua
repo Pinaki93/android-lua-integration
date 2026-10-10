@@ -2,21 +2,17 @@ local CommonUi = featureModule("common-ui")
 
 local function render(view)
   local children = CommonUi.children(view)
-  if not view.loaded then
-    return ui.column { gap = 16, children = children }
-  end
-  local message = view.message
+  local toolbar = ui.toolbar { title = view.screen == "detail" and "Edit Article" or "Add Article", backAction = "reading.back" }
+  local function scaffold() return CommonUi.scaffold(view, ui.column { gap = 16, children = children }, toolbar) end
+  if not view.loaded then return scaffold() end
   local screen = view.screen
   local selected = view.selected
   local draft = view.draft
-  local requests = view.requests
-  local deletion = view.deletion
   local errors = view.errors
   local text = CommonUi.text
   local button = CommonUi.button
   local card = CommonUi.card
   local find = view.find
-  children[#children + 1] = button("Back to list / Cancel", "back", "quiet")
   local fields = {}
   for _, field in ipairs({ "url", "title", "tags", "note" }) do
     fields[#fields + 1] = ui.textField { label = ({ url = "HTTPS URL", title = "Title", tags = "Tags (comma-separated)", note = "Note" })[field],
@@ -30,19 +26,13 @@ local function render(view)
   children[#children + 1] = text("Fetching a title and favicon contacts the article's website. Original articles require a connection.", "label", "secondary")
   if screen == "detail" then
     local _, item = find(selected)
-    local interrupted = item.metadataState == "pending" and not requests[item.id]
-    children[#children + 1] = text(item.isRead and "Read" or "Unread")
-    children[#children + 1] = text("Title: " .. (interrupted and "failed (interrupted; Retry)" or item.metadataState))
-    children[#children + 1] = card({ ui.row { gap = 8, wrap = true, children = {
+    toolbar.overflow = {
       button(item.isRead and "Mark unread" or "Mark read", "toggle", "quiet"),
-      button("Open original", "open", "quiet"), button("Retry title", "retry", "quiet") } } }, "subtle")
-    children[#children + 1] = button("Delete article", "delete", "destructive")
-    if deletion then children = { ui.dialog { title = "Delete article?", dismissAction = "reading.cancelDelete", children = {
-      text(item.title), text(message or "This removes the saved entry and note."), button("Cancel", "cancelDelete", "quiet"), button("Delete", "confirmDelete", "destructive")
-    } } } end
+      button("Open original", "open", "quiet"), button("Retry title", "retry", "quiet"),
+      button("Delete article", "delete", "destructive")
+    }
   end
-  return ui.column { gap = 16, children = children }
+  return scaffold()
 end
-
 
 return render

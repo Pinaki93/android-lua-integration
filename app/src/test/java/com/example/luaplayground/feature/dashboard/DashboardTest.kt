@@ -54,6 +54,10 @@ class DashboardTest {
     }
 
     private fun UiNode.texts(): List<String> = when (this) {
+        is UiNode.Scaffold -> listOfNotNull(content, toolbar, alert, snackbar).flatMap { it.texts() }
+        is UiNode.Toolbar -> listOf(title) + (children + overflow).flatMap { it.texts() }
+        is UiNode.Alert -> listOfNotNull(title, subtitle) + listOfNotNull(positive, negative).flatMap { it.texts() }
+        is UiNode.Snackbar -> listOf(text)
         is UiNode.Button -> listOf(text)
         is UiNode.Dialog -> listOf(title) + children.flatMap { it.texts() }
         is UiNode.Card -> children.flatMap { it.texts() }

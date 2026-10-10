@@ -5,6 +5,17 @@ import java.util.Collections
 
 @Immutable
 sealed interface UiNode {
+    data class Scaffold(val content: UiNode, val toolbar: Toolbar? = null, val alert: Alert? = null, val snackbar: Snackbar? = null) : UiNode
+
+    @ConsistentCopyVisibility
+    data class Toolbar private constructor(val title: String, val backAction: String?, val children: List<UiNode>, val overflow: List<UiNode>) : UiNode {
+        constructor(title: String, backAction: String?, children: Iterable<UiNode>, overflow: Iterable<UiNode>) :
+            this(title, backAction, children.immutableList(), overflow.immutableList())
+    }
+
+    data class Alert(val title: String?, val subtitle: String?, val positive: Button?, val negative: Button?, val dismissAction: String) : UiNode
+    data class Snackbar(val text: String, val dismissAction: String) : UiNode
+
     @ConsistentCopyVisibility
     data class Column private constructor(
         val children: List<UiNode>,

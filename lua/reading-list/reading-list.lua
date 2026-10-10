@@ -2,9 +2,13 @@ local CommonUi = featureModule("common-ui")
 
 local function render(view)
 	local children = CommonUi.children(view)
+    local toolbar = ui.toolbar { title = "Reading List", children = {
+      ui.iconButton { icon = "add", label = "Add article", action = "reading.add", enabled = view.loaded }
+    } }
+    local function scaffold() return CommonUi.scaffold(view, ui.column { gap = 16, children = children }, toolbar) end
 
 	if not view.loaded then
-		return ui.column { gap = 16, children = children }
+		return scaffold()
 	end
 
 	local articles = view.articles
@@ -26,7 +30,6 @@ local function render(view)
 	end
 
 	children[#children + 1] = text(#articles .. " saved · " .. unread .. " unread", "label", "secondary")
-	children[#children + 1] = button("Add article", "add")
 
 	local statuses = {}
 	for _, value in ipairs({ "All", "Unread", "Read" }) do
@@ -79,7 +82,7 @@ local function render(view)
 	if #visible == 0 then
 		children[#children + 1] = card({ text(#articles == 0 and "A little space for good reading" or "Try another view", "title"),
 			text(#articles == 0 and "No articles yet. Add one to your queue." or "No articles match these filters.", "body", "secondary"),
-			#articles == 0 and button("Add your first article", "add") or ui.row { gap = 8, wrap = true, children = {
+			#articles == 0 and text("Use Add article in the toolbar.", "label", "secondary") or ui.row { gap = 8, wrap = true, children = {
 				button("All articles", "status.All", "quiet"), button("All tags", "tag.all", "quiet") } }
 		}, #articles == 0 and "subtle" or "outlined")
 	end
@@ -110,7 +113,7 @@ local function render(view)
 		children[#children + 1] = button("Next page", "next", "quiet")
 	end
 	view.page = page
-	return ui.column { gap = 16, children = children }
+	return scaffold()
 end
 
 return render

@@ -9,7 +9,9 @@ view.page, view.tag_page = 1, 1
 local function on_event(event)
   local action = string.sub(event.action, 9)
 
-  if action == "reload" then
+  if action == "dismissSnackbar" then
+    view.message = nil
+  elseif action == "reload" then
     baseController.load()
   elseif action == "add" then
     navigation.navigate("reading-list/add")

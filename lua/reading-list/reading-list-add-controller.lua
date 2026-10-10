@@ -15,6 +15,9 @@ local messages = {
 
 local function refresh(failure)
   base.refresh(failure, messages[failure])
+  if failure and base.scaffold.alert then
+    base.scaffold.alert.subtitle = messages[failure]
+  end
 end
 
 view.screen = "add"
@@ -180,11 +183,18 @@ local function handle_article_action(action)
     end
   elseif action == "delete" then
     view.deletion = true
+    base.scaffold.showAlert(ui.alert {
+      title = "Delete article?", subtitle = article.title .. "\n" .. "This removes the saved entry and note.",
+      positive = ui.button { text = "Delete", action = "reading.confirmDelete", style = "destructive" },
+      negative = ui.button { text = "Cancel", action = "reading.cancelDelete", style = "quiet" },
+      dismissAction = "reading.cancelDelete",
+    })
   elseif action == "confirmDelete" and view.deletion then
     local ok, failure = interactor.change(view.selected, "delete")
     refresh(failure)
     if ok then
       view.requests[view.selected] = nil
+      base.scaffold.dismissAlert()
       navigation.back()
     end
   end
@@ -194,6 +204,10 @@ local function on_event(event)
   local action = string.sub(event.action, 9)
   if event.type == "text" then
     update_draft(event, action)
+    return
+  end
+  if action == "dismissSnackbar" then
+    view.message = nil
     return
   end
   if action == "reload" then
@@ -235,6 +249,7 @@ local function on_event(event)
     end
   elseif action == "cancelDelete" then
     view.deletion = false
+    base.scaffold.dismissAlert()
   else
     handle_article_action(action)
   end

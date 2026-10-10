@@ -23,6 +23,7 @@ class LuaFeatureTest {
             "reading-list/edit/{id}" to "reading-list/reading-list-add-controller.luac",
         ), routes)
         assertEquals(0xFF176047L, themes.getValue("reading-list")["primary"])
+        assertEquals(0xFFEEECE6L, themes.getValue("reading-list")["toolbar"])
     }
 
     @Test fun `feature hooks reject unsafe names wrong types and invalid themes`() {
@@ -32,6 +33,8 @@ class LuaFeatureTest {
             "registerSubRoute('items').registerTheme { primary = '#123' }",
             "registerSubRoute('items').registerTheme { unknown = '#123456' }",
             "registerSubRoute('items').registerTheme { primary = 123456 }",
+            "registerSubRoute('items').registerTheme { toolbar = '#123' }",
+            "registerSubRoute('items').registerTheme { toolbar = 123456 }",
         ).forEach { source ->
             assertFalse(source, LuaEngine().executeApp(source.encodeToByteArray(), { _, _ -> }, {}).succeeded)
         }
@@ -64,7 +67,7 @@ class LuaFeatureTest {
         assertNotNull(saved)
         val before = saved!!.copyOf()
         val edit = session("reading-list-add-controller", mapOf("id" to "article-1"))
-        val root = (edit.start() as LuaUiResult.Success).root as UiNode.Column
+        val root = (edit.start() as LuaUiResult.Success).root.let { (it as UiNode.Scaffold).content as UiNode.Column }
         val fields = root.children.filterIsInstance<UiNode.Card>().flatMap { it.children }
             .filterIsInstance<UiNode.Column>().flatMap { it.children }.filterIsInstance<UiNode.TextField>()
         assertEquals("Saved title", fields.single { it.label == "Title" }.value)
@@ -72,12 +75,12 @@ class LuaFeatureTest {
         edit.dispatch(LuaEvent.TextChanged("reading.field.note", "Discard this"))
         edit.dispatch(LuaEvent.Action("reading.back"))
         assertEquals(1, backs)
-        val refreshed = (list.resume() as LuaUiResult.Success).root as UiNode.Column
+        val refreshed = (list.resume() as LuaUiResult.Success).root.let { (it as UiNode.Scaffold).content as UiNode.Column }
         assertTrue(refreshed.children.filterIsInstance<UiNode.Text>().any { it.text == "1 saved · 1 unread" })
         list.dispatch(LuaEvent.Action("reading.view.article-1"))
         assertEquals("reading-list/edit/article-1", routes.last())
         list.dispatch(LuaEvent.Action("reading.status.Read"))
-        val filtered = (list.resume() as LuaUiResult.Success).root as UiNode.Column
+        val filtered = (list.resume() as LuaUiResult.Success).root.let { (it as UiNode.Scaffold).content as UiNode.Column }
         assertTrue(filtered.children.filterIsInstance<UiNode.ListItem>().isEmpty())
         val filters = filtered.children.filterIsInstance<UiNode.Row>().flatMap { it.children }
             .filterIsInstance<UiNode.Button>()
@@ -104,10 +107,10 @@ class LuaFeatureTest {
             assert(card.action == "reading.view.article" and card.style == "outlined")
             assert(card.children[1].gap == 12 and card.children[1].children[1] == label)
             assert(common.card({ label }).action == nil)
-            assert(#common.children({ loaded = true }) == 1)
-            assert(#common.children({ loaded = true, message = "Saved" }) == 2)
+            assert(#common.children({ loaded = true }) == 0)
+            assert(#common.children({ loaded = true, message = "Saved" }) == 0)
             local children = common.children({ loaded = false, message = "Load failed" })
-            assert(children[2].children[1].children[3].action == "reading.reload")
+            assert(children[1].children[1].children[3].action == "reading.reload")
             return { render = function() return ui.column { children = children } end, onEvent = function() end }
         """.trimIndent()
         val session = LuaSession(source, { error("Storage is unused") }, modules = mapOf(
@@ -125,7 +128,7 @@ class LuaFeatureTest {
             local first = featureModule("reading-list-add-controller")
             local second = featureModule("reading-list-add-controller")
             local function title(controller)
-              return controller.render().children[3].children[1].children[2].value
+              return controller.render().content.children[1].children[1].children[2].value
             end
             assert(first ~= second)
             first.onEvent { type = "text", action = "reading.field.title", value = "First draft" }

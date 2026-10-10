@@ -7,6 +7,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -31,7 +32,10 @@ internal fun readingColors(dark: Boolean) = if (dark) darkColorScheme(
     surfaceContainerHighest = Color.White, onSurfaceVariant = Color(0xFF52645C),
 )
 
+val LocalToolbarColor = compositionLocalOf<Color?> { null }
+
 val FEATURE_COLORS = setOf(
+    "toolbar",
     "primary", "onPrimary", "primaryContainer", "onPrimaryContainer",
     "inversePrimary", "secondary", "onSecondary", "secondaryContainer",
     "onSecondaryContainer", "tertiary", "onTertiary", "tertiaryContainer",
@@ -84,7 +88,9 @@ internal fun androidx.compose.material3.ColorScheme.withFeatureColors(overrides:
 
 @Composable
 fun FeatureTheme(overrides: Map<String, Long>, content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = MaterialTheme.colorScheme.withFeatureColors(overrides), content = content)
+    CompositionLocalProvider(LocalToolbarColor provides overrides["toolbar"]?.let { Color(it) }) {
+        MaterialTheme(colorScheme = MaterialTheme.colorScheme.withFeatureColors(overrides), content = content)
+    }
 }
 
 @Composable
@@ -98,6 +104,7 @@ fun ReadingTheme(overrides: Map<String, Long> = emptyMap(), content: @Composable
     )
     CompositionLocalProvider(
         LocalReadingStyle provides true,
+        LocalToolbarColor provides overrides["toolbar"]?.let { Color(it) },
         androidx.compose.material3.LocalContentColor provides colors.onSurface,
     ) {
         MaterialTheme(colorScheme = colors, typography = typography, content = content)
