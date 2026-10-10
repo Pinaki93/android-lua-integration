@@ -7,7 +7,7 @@
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="Lua Playground"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"
             android:exported="true">
