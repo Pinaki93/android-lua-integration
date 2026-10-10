@@ -1,7 +1,7 @@
 -- Article rules and persistence; no screen state or session callbacks.
 local ReadingInteractor = {}
 
-function ReadingInteractor.new()
+function ReadingInteractor.new(source)
   local articles = {}
   local loaded = false
   local exists = false
@@ -97,7 +97,7 @@ function ReadingInteractor.new()
         titleSource = true,
         tags = true,
         note = true,
-        isRead = true,
+        isRead = not source or nil,
         createdAt = true,
         metadataState = true,
         favicon = true,
@@ -127,7 +127,7 @@ function ReadingInteractor.new()
       if item.titleSource == "fallback" and item.title ~= item.url then
         return false
       end
-      if type(item.note) ~= "string" or reading.length(item.note) > 4000 or type(item.isRead) ~= "boolean" then
+      if type(item.note) ~= "string" or reading.length(item.note) > 4000 or (not source and type(item.isRead) ~= "boolean") then
         return false
       end
       if type(item.createdAt) ~= "number"
@@ -162,7 +162,7 @@ function ReadingInteractor.new()
 
   local function load_articles()
     local ok, document = pcall(function()
-      store = storage.open("reading-list.json")
+      store = storage.open(source and "reading-sources.json" or "reading-list.json")
       return store.read()
     end)
     if not ok or (document ~= nil and not is_valid_document(document)) then
@@ -232,6 +232,7 @@ function ReadingInteractor.new()
       createdAt = reading.now(),
       metadataState = metadata and (metadata.error and "failed" or "available") or "pending",
     }
+    if source then article.isRead = nil end
     local candidate = copy_articles()
     candidate[#candidate + 1] = article
     local ok, failure = save_articles(candidate)
@@ -277,7 +278,7 @@ function ReadingInteractor.new()
     local index, article = find_article(id)
     if not article then return false end
     local candidate = copy_articles()
-    if action == "toggle" then
+    if action == "toggle" and not source then
       candidate[index].isRead = not article.isRead
     elseif action == "retry" then
       candidate[index].metadataState = "pending"

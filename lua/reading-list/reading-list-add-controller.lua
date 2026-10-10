@@ -1,7 +1,8 @@
 local BaseController = featureModule("base-controller")
 local renderView = featureModule("reading-list-add")
 local id = navigation.arguments.id
-local base = BaseController.new()
+local source = navigation.arguments.kind == "source"
+local base = BaseController.new(source)
 local interactor, view = base.interactor, base.view
 local find_article = view.find
 local messages = {
@@ -148,6 +149,11 @@ local function save_form()
   end
   refresh(failure)
   if not article then return end
+  if source then
+    if view.preview and view.preview.pending and view.preview.cancel then view.preview.cancel() end
+    navigation.back()
+    return
+  end
   show_details(article)
   if failure == "duplicate" then
     view.message = "Already saved"

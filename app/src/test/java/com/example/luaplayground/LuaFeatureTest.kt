@@ -20,6 +20,7 @@ class LuaFeatureTest {
         assertEquals(listOf(
             "reading-list/index" to "reading-list/reading-list-controller.luac",
             "reading-list/add" to "reading-list/reading-list-add-controller.luac",
+            "reading-list/add/{kind}" to "reading-list/reading-list-add-controller.luac",
             "reading-list/edit/{id}" to "reading-list/reading-list-add-controller.luac",
         ), routes)
         assertEquals(0xFF176047L, themes.getValue("reading-list")["primary"])
@@ -92,6 +93,53 @@ class LuaFeatureTest {
         assertEquals(missingRoot, (missing.dispatch(LuaEvent.Action("reading.reload")) as LuaUiResult.Success).root)
         missing.close()
         list.close(); add.close(); edit.close()
+    }
+
+    @Test fun `sources stay inside reading list and back preserves article filters`() {
+        val routes = mutableListOf<String>()
+        var backs = 0
+        val openedStores = mutableListOf<String>()
+        val store = JsonStore({ null }, {}, {})
+        val modules = listOf("base-controller", "reading-interactor", "common-ui", "reading-list").associateWith {
+            File("../lua/reading-list/$it.lua").readBytes()
+        }
+        fun session(arguments: Map<String, String> = emptyMap()) = LuaSession(
+            File("../lua/reading-list/reading-list-controller.lua").readText(),
+            { name -> openedStores += name; store },
+            navigation = LuaNavigation(arguments, { routes += it }, { backs++ }),
+            modules = modules,
+        )
+        val articles = session()
+        try {
+            assertTrue(articles.start() is LuaUiResult.Success)
+            articles.dispatch(LuaEvent.Action("reading.status.Unread"))
+            articles.dispatch(LuaEvent.Action("reading.sources"))
+            assertTrue(routes.isEmpty())
+            val root = (articles.resume() as LuaUiResult.Success).root as UiNode.Scaffold
+            assertEquals("Reading List", root.toolbar!!.title)
+            val sourceFilters = (root.content as UiNode.Column).children.filterIsInstance<UiNode.Row>()
+                .flatMap { it.children }.filterIsInstance<UiNode.Button>()
+            assertEquals("source (selected)", sourceFilters.single { it.action == "reading.sources" }.text)
+            assertEquals("Unread", sourceFilters.single { it.action == "reading.status.Unread" }.text)
+            assertEquals("reading.back", root.toolbar!!.backAction)
+            articles.dispatch(LuaEvent.Action("reading.add"))
+            assertEquals("reading-list/add/source", routes.last())
+            articles.dispatch(LuaEvent.Action("reading.back"))
+            assertEquals(0, backs)
+            val resumed = (articles.resume() as LuaUiResult.Success).root as UiNode.Scaffold
+            val filters = (resumed.content as UiNode.Column).children.filterIsInstance<UiNode.Row>()
+                .flatMap { it.children }.filterIsInstance<UiNode.Button>()
+            assertEquals("Unread (selected)", filters.single { it.action == "reading.status.Unread" }.text)
+            articles.dispatch(LuaEvent.Action("reading.sources"))
+            val switched = (articles.dispatch(LuaEvent.Action("reading.status.Read")) as LuaUiResult.Success).root as UiNode.Scaffold
+            assertNull(switched.toolbar!!.backAction)
+            val readFilters = (switched.content as UiNode.Column).children.filterIsInstance<UiNode.Row>()
+                .flatMap { it.children }.filterIsInstance<UiNode.Button>()
+            assertEquals("Read (selected)", readFilters.single { it.action == "reading.status.Read" }.text)
+            assertTrue(openedStores.contains("reading-sources.json"))
+        } finally {
+            articles.close()
+        }
     }
 
     @Test fun `common ui preserves styles actions and recovery content`() {

@@ -13,6 +13,7 @@ class ReadingInteractorTest {
             reading = {
               trim = function(value) return value:match("^%s*(.-)%s*$") end,
               lower = string.lower,
+              isArray = function(value) return type(value) == "table" end,
               length = string.len,
               normalize = function(value)
                 assert(value:match("^https://"))
@@ -55,6 +56,20 @@ class ReadingInteractorTest {
             assert(interactor.change(article.id, "delete"))
             assert(#saved.articles == 0)
             assert(interactor.updateMetadata(article.id, { title = "Late" }) == nil)
+            saved = nil
+            local sources = Interactor.new(true)
+            assert(sources.load())
+            local source = sources.add(form)
+            assert(source.isRead == nil)
+            assert(not sources.change(source.id, "toggle"))
+            assert(sources.load())
+            local committed = saved
+            saved.articles[1].isRead = false
+            assert(not sources.load())
+            local ok, reason = sources.change(source.id, "delete")
+            assert(not ok and reason == "load")
+            assert(saved == committed)
+
         """.trimIndent(), "interactor-test").call()
     }
 }

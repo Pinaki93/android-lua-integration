@@ -2,21 +2,20 @@ local CommonUi = featureModule("common-ui")
 
 local function render(view)
 	local children = CommonUi.children(view)
-    local toolbar = ui.toolbar { title = "Reading List", children = {
-      ui.iconButton { icon = "add", label = "Add article", action = "reading.add", enabled = view.loaded }
+    local toolbar = ui.toolbar { title = "Reading List", backAction = view.source and "reading.back" or nil, children = {
+      ui.iconButton { icon = "add", label = view.source and "Add source" or "Add article", action = "reading.add", enabled = view.loaded }
     } }
     local _, selected = view.find(view.sheetSelected)
+    local sheetActions = { CommonUi.button(view.source and "Open" or "Read", "read", "primary") }
+    if not view.source then sheetActions[#sheetActions + 1] = CommonUi.button("Edit", "edit", "filter") end
+    sheetActions[#sheetActions + 1] = CommonUi.button("Delete", "delete", "destructive")
     local bottomSheet = selected and ui.bottomSheet {
       dismissAction = "reading.dismissSheet", cornerRadius = 32,
       content = ui.column { gap = 12, children = {
-        CommonUi.text("YOUR READING QUEUE", "label", "gold"),
+        CommonUi.text(view.source and "READING SOURCE" or "YOUR READING QUEUE", "label", "gold"),
         CommonUi.text(selected.title, "title"),
         CommonUi.text(reading.hostname(selected.url), "body", "secondary"),
-        ui.row { gap = 12, wrap = true, children = {
-          CommonUi.button("Read", "read", "primary"),
-          CommonUi.button("Edit", "edit", "filter"),
-          CommonUi.button("Delete", "delete", "destructive"),
-        } },
+        ui.row { gap = 12, wrap = true, children = sheetActions },
       } },
     } or nil
     local function scaffold() return CommonUi.scaffold(view, ui.column { gap = 16, children = children }, toolbar, bottomSheet) end
@@ -24,6 +23,35 @@ local function render(view)
 	if not view.loaded then
 		return scaffold()
 	end
+
+  local statuses = { CommonUi.filter("source", "sources", view.source) }
+  for _, value in ipairs({ "All", "Unread", "Read" }) do
+    statuses[#statuses + 1] = CommonUi.filter(value, "status." .. value, not view.source and view.status == value)
+  end
+  children[#children + 1] = ui.row { gap = 8, wrap = true, children = statuses }
+
+  if view.source then
+    if #view.articles == 0 then
+      children[#children + 1] = CommonUi.text("No sources yet. Add a source in the toolbar.")
+    end
+    local count = #view.articles
+    local lastPage = (count - count % 20) / 20 + (count % 20 > 0 and 1 or 0)
+    if lastPage < 1 then lastPage = 1 end
+    if view.page > lastPage then view.page = lastPage end
+    local lastIndex = view.page * 20 < count and view.page * 20 or count
+    for index = (view.page - 1) * 20 + 1, lastIndex do
+      local item = view.articles[index]
+      children[#children + 1] = ui.listItem { key = "source." .. item.id, children = {
+        CommonUi.card({ ui.row { gap = 12, children = {
+          ui.image { url = item.favicon and "data:image/png;base64," .. item.favicon, label = "Website icon", width = 32, height = 32 },
+          CommonUi.text(item.title, "title"),
+        } } }, "default", "view." .. item.id)
+      } }
+    end
+    if view.page > 1 then children[#children + 1] = CommonUi.button("Previous page", "previous", "quiet") end
+    if view.page < lastPage then children[#children + 1] = CommonUi.button("Next page", "next", "quiet") end
+    return scaffold()
+  end
 
 	local articles = view.articles
 	local status = view.status
@@ -45,12 +73,6 @@ local function render(view)
 
 	children[#children + 1] = text(#articles .. " saved · " .. unread .. " unread", "label", "secondary")
 
-	local statuses = {}
-	for _, value in ipairs({ "All", "Unread", "Read" }) do
-		statuses[#statuses + 1] = filter(value, "status." .. value, status == value)
-	end
-
-	children[#children + 1] = ui.row { gap = 8, wrap = true, children = statuses }
 	children[#children + 1] = text("Tag filter: " .. (tag == "" and "All tags" or tag))
 	local tag_filters = { filter("All tags", "tag.all", tag == "") }
 	local seen, position, tag_count = {}, 0, 0

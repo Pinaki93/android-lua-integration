@@ -2,9 +2,9 @@
 local ReadingInteractor = featureModule("reading-interactor")
 local BaseController = {}
 
-function BaseController.new()
-  local interactor = ReadingInteractor.new()
-  local view = { articles = {}, loaded = false, message = nil }
+function BaseController.new(source)
+  local interactor = ReadingInteractor.new(source)
+  local view = { source = source, articles = {}, loaded = false, message = nil }
   view.find = interactor.find
   local scaffold = {}
   function scaffold.showSnackbar(message) view.message = message end

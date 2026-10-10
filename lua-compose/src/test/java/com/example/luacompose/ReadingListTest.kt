@@ -9,6 +9,7 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReadingListTest {
+    private val SOURCE_ICON = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9xkAAAAASUVORK5CYII="
     private class Memory(initial: String? = null) {
         var bytes = initial?.toByteArray()
         var writes = 0
@@ -26,7 +27,7 @@ class ReadingListTest {
     }
 
     private class Harness(val scope: TestScope, val memory: Memory = Memory(), compiled: Boolean = false,
-        identifier: (() -> String)? = null) {
+        identifier: (() -> String)? = null, val sourceMemory: Memory = Memory()) {
         val requests = mutableListOf<String>()
         val logs = mutableListOf<String>()
         val completions = mutableListOf<Pair<Long, LuaHttpClient.Response>>()
@@ -51,10 +52,10 @@ class ReadingListTest {
             clipboardText = { clipboardReads++; if (clipboardFailure) error("unavailable"); clipboard },
         )
         val session = if (compiled) LuaSession(
-            compile(readingFixture()), { memory.store },
+            compile(readingFixture()), { name -> if (name == "reading-sources.json") sourceMemory.store else memory.store },
             scope = scope, completed = { id, result -> completions += id to result }, reading = capability,
         ) else LuaSession(
-            readingFixture(), { memory.store },
+            readingFixture(), { name -> if (name == "reading-sources.json") sourceMemory.store else memory.store },
             scope = scope, completed = { id, result -> completions += id to result }, reading = capability,
         )
         var result = session.start()
@@ -85,6 +86,134 @@ class ReadingListTest {
             }
         }
         fun value(field: String) = nodes().filterIsInstance<UiNode.TextField>().single { it.action == "reading.field.$field" }.value
+    }
+
+    @Test fun `sources persist separately and offer only open and delete`() = runTest {
+        val h = Harness(this)
+        h.add(title = "Article")
+        h.action("back")
+        h.action("sources")
+        assertTrue(h.texts().contains("source (selected)"))
+        h.action("add")
+        assertEquals(listOf("reading.field.url", "reading.field.title"), h.nodes().filterIsInstance<UiNode.TextField>().map { it.action })
+        h.field("url", "http://invalid.com")
+        h.action("save")
+        assertTrue(h.nodes().filterIsInstance<UiNode.TextField>().any { it.error != null })
+        h.field("url", "https://example.com/article")
+        h.field("title", "Source")
+        h.action("save")
+        val source = h.sourceMemory.article()
+        assertEquals("Source", source["title"]!!.jsonPrimitive.content)
+        assertFalse(source.containsKey("isRead"))
+        assertEquals(1, h.memory.articles().size)
+        h.action("view.id-2")
+        val sheet = h.nodes().filterIsInstance<UiNode.BottomSheet>().single()
+        assertEquals(listOf("Open", "Delete"), sheet.content.flatten().filterIsInstance<UiNode.Button>().map { it.text })
+        h.action("read")
+        assertEquals(listOf("https://example.com/article"), h.browsers)
+        h.action("view.id-2")
+        h.sourceMemory.failWrite = true
+        h.action("delete")
+        h.action("confirmDelete")
+        assertEquals(1, h.sourceMemory.articles().size)
+        h.sourceMemory.failWrite = false
+        h.action("cancelDelete")
+        h.action("dismissSheet")
+        h.action("back")
+        h.action("sources")
+        assertTrue(h.texts().contains("Source"))
+        h.action("view.id-2")
+        h.action("delete")
+        h.action("confirmDelete")
+        assertTrue(h.sourceMemory.articles().isEmpty())
+        assertEquals(1, h.memory.articles().size)
+        h.session.close()
+    }
+
+    @Test fun `source list finishes metadata after leaving add and preserves user titles`() = runTest {
+        val h = Harness(this)
+        val response = CompletableDeferred<LuaHttpClient.Response>()
+        h.reply = { response.await() }
+        h.action("sources")
+        h.action("add")
+        h.field("url", "https://example.com")
+        h.field("title", "My source")
+        h.action("save")
+        runCurrent()
+        h.action("back")
+        response.complete(LuaHttpClient.Response(body = "Fetched title", favicon = SOURCE_ICON))
+        advanceUntilIdle()
+        h.deliver()
+        assertEquals("My source", h.sourceMemory.article()["title"]!!.jsonPrimitive.content)
+        assertEquals(SOURCE_ICON, h.sourceMemory.article()["favicon"]!!.jsonPrimitive.content)
+        assertTrue(h.nodes().filterIsInstance<UiNode.Image>().isEmpty())
+        h.action("sources")
+        assertTrue(h.nodes().filterIsInstance<UiNode.Image>().any { it.url == "data:image/png;base64,$SOURCE_ICON" })
+        h.action("add")
+        h.field("url", "https://example.com#fragment")
+        h.action("save")
+        assertEquals(1, h.sourceMemory.articles().size)
+        h.session.close()
+    }
+
+    @Test fun `sources reload offline and recover failed reads without resetting data`() = runTest {
+        val sourceMemory = Memory()
+        val h = Harness(this, sourceMemory = sourceMemory)
+        h.action("sources")
+        h.action("add")
+        h.field("url", "https://example.com")
+        h.action("save")
+        advanceUntilIdle()
+        h.deliver()
+        assertEquals("failed", sourceMemory.article()["metadataState"]!!.jsonPrimitive.content)
+        assertEquals("https://example.com", sourceMemory.article()["title"]!!.jsonPrimitive.content)
+        assertNull(h.nodes().filterIsInstance<UiNode.Image>().single().url)
+        h.session.close()
+        val restored = Harness(this, sourceMemory = sourceMemory)
+        restored.action("sources")
+        assertTrue(restored.texts().contains("https://example.com"))
+        restored.browserFailure = true
+        restored.action("view.id-1")
+        restored.action("read")
+        assertTrue(restored.texts().any { it.contains("Could not open") })
+        val before = sourceMemory.snapshot()
+        sourceMemory.failRead = true
+        restored.action("back")
+        restored.action("sources")
+        assertTrue(restored.texts().any { it.contains("Reload") })
+        restored.action("add")
+        assertEquals(before, sourceMemory.snapshot())
+        restored.action("back")
+        sourceMemory.failRead = false
+        restored.action("sources")
+        assertTrue(restored.texts().contains("https://example.com"))
+        restored.session.close()
+    }
+
+    @Test fun `source pages include every entry and clamp after deletion`() = runTest {
+        val h = Harness(this)
+        h.action("sources")
+        h.action("add")
+        h.field("url", "https://example.com")
+        h.action("save")
+        advanceUntilIdle()
+        h.deliver()
+        val template = h.sourceMemory.article()
+        val entries = (1..21).map { index ->
+            JsonObject(template + mapOf("id" to JsonPrimitive("source-$index"), "url" to JsonPrimitive("https://example.com/$index"), "title" to JsonPrimitive("https://example.com/$index")))
+        }
+        h.sourceMemory.bytes = JsonObject(h.sourceMemory.document() + ("articles" to JsonArray(entries))).toString().toByteArray()
+        h.action("back")
+        h.action("sources")
+        assertEquals(20, h.nodes().filterIsInstance<UiNode.ListItem>().size)
+        h.action("next")
+        assertEquals(listOf("source.source-21"), h.nodes().filterIsInstance<UiNode.ListItem>().map { it.key })
+        h.action("view.source-21")
+        h.action("delete")
+        h.action("confirmDelete")
+        assertEquals(20, h.nodes().filterIsInstance<UiNode.ListItem>().size)
+        assertFalse(h.texts().contains("Next page"))
+        h.session.close()
     }
 
     @Test fun `article sheet wires read edit dismiss and confirmed deletion`() = runTest {

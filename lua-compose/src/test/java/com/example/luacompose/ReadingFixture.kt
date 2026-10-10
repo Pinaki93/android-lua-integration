@@ -16,26 +16,41 @@ internal fun readingFixture(): String {
 
         -- Keep both controllers alive to exercise late callbacks across fixture navigation.
         local base = modules["base-controller"].new()
-        modules["base-controller"].new = function() return base end
-        local listing, form, active
+        local sourceBase
+        local createBase = modules["base-controller"].new
+        modules["base-controller"].new = function(source)
+          if not source then return base end
+          sourceBase = sourceBase or createBase(true)
+          return sourceBase
+        end
+        local listing, form, sourceForm, active
+        local stack = {}
         local navigation = { arguments = {} }
         navigation.back = function()
-          active = listing
+          active = table.remove(stack) or listing
           base.view.message = nil
+          if active.onResume then active.onResume() end
         end
         navigation.navigate = function(route)
           if not base.view.loaded then return end
-          active = form
-          local action = route == "reading-list/add" and "add" or "view." .. string.sub(route, 19)
-          form.onEvent { type = "action", action = "reading." .. action }
+          stack[#stack + 1] = active
+          if route == "reading-list/add/source" and not sourceForm then
+            navigation.arguments.kind = "source"
+            sourceForm = ${module("reading-list-add-controller")}
+            navigation.arguments.kind = nil
+          end
+          active = route == "reading-list/add/source" and sourceForm or form
+          local action = (route == "reading-list/add" or route == "reading-list/add/source") and "add" or "view." .. string.sub(route, 19)
+          active.onEvent { type = "action", action = "reading." .. action }
         end
         listing = ${module("reading-list-controller")}
         form = ${module("reading-list-add-controller")}
+
         active = listing
         return {
           render = function() return active.render() end,
           onEvent = function(event) active.onEvent(event) end,
-          onResume = function() if active == listing then listing.onResume() end end,
+          onResume = function() if active.onResume then active.onResume() end end,
         }
         """.trimIndent()
 }
