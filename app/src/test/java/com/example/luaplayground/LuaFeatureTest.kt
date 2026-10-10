@@ -78,6 +78,7 @@ class LuaFeatureTest {
         val refreshed = (list.resume() as LuaUiResult.Success).root.let { (it as UiNode.Scaffold).content as UiNode.Column }
         assertTrue(refreshed.children.filterIsInstance<UiNode.Text>().any { it.text == "1 saved · 1 unread" })
         list.dispatch(LuaEvent.Action("reading.view.article-1"))
+        list.dispatch(LuaEvent.Action("reading.edit"))
         assertEquals("reading-list/edit/article-1", routes.last())
         list.dispatch(LuaEvent.Action("reading.status.Read"))
         val filtered = (list.resume() as LuaUiResult.Success).root.let { (it as UiNode.Scaffold).content as UiNode.Column }

@@ -205,8 +205,9 @@ class LuaSession private constructor(
         (event !is LuaEvent.TextChanged || event.value.codePointCount(0, event.value.length) <= LuaUiEngine.MAX_TEXT_LENGTH)
 
     private fun admits(node: UiNode?, event: LuaEvent): Boolean = when (node) {
-        is UiNode.Scaffold -> if (node.alert != null) admits(node.alert, event) else
+        is UiNode.Scaffold -> if (node.alert != null) admits(node.alert, event) else if (node.bottomSheet != null) admits(node.bottomSheet, event) else
             admits(node.toolbar, event) || admits(node.content, event) || admits(node.snackbar, event)
+        is UiNode.BottomSheet -> (event is LuaEvent.Action && event.action == node.dismissAction) || admits(node.content, event)
         is UiNode.Toolbar -> (event is LuaEvent.Action && event.action == node.backAction) ||
             (node.children + node.overflow).any { admits(it, event) }
         is UiNode.Alert -> (event is LuaEvent.Action && event.action == node.dismissAction) || admits(node.positive, event) || admits(node.negative, event)

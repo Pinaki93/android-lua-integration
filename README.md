@@ -124,8 +124,12 @@ The existing `playground.lua` and `todo.lua` scripts are the simplest references
 
 Open **Reading list** from the playground to save an HTTPS article URL with an
 optional title, up to five tags, and a note. Entries can be filtered by read status
-and tag, edited, marked read or unread, and deleted with confirmation. The list
-shows 20 entries per page. Duplicate normalized URLs open the existing entry.
+and tag, edited, marked read or unread, and deleted with confirmation. Tapping an
+article opens a bottom sheet with **Read**, **Edit**, and **Delete** actions.
+Read opens the original URL in the browser; Edit opens the saved entry and note.
+Canceling deletion returns to the sheet, and failed writes keep the entry and
+confirmation available for retry. The list shows 20 entries per page. Duplicate
+normalized URLs open the existing entry.
 
 Saved entries and notes work offline; original articles open in the browser and
 are not downloaded. The screen persists a versioned `reading-list.json` document
@@ -147,10 +151,16 @@ bounded parser supports UTF-8/ASCII HTML with a closed head in its first 64 KiB
 and a limited set of named entities plus numeric entities.
 
 The example adds clickable cards, wrapping rows, multiline fields, confirmation
-dialogs, and filter/destructive button styles to the validated Compose UI model.
+dialogs, modal bottom sheets, and filter/destructive button styles to the validated Compose UI model.
 Its cream, teal, and gold theme applies only to the reading-list route. See
-[`lua/reading-list.lua`](lua/reading-list.lua) and the
+[`lua/reading-list/reading-list.lua`](lua/reading-list/reading-list.lua) and the
 [product requirements](docs/prd/offline-reading-list.md) for the flow and scope.
+
+Use `ui.bottomSheet { content = ..., dismissAction = "screen.dismiss" }` in a
+scaffold's `bottomSheet` slot. Sheets render with Material 3 Compose, scroll their
+content, and accept an optional integer `cornerRadius` from 0 to 64 dp (default:
+28). While a sheet is open, only its actions and inputs are admitted. A scaffold
+alert takes precedence over the sheet until dismissed.
 
 ## Design principles
 

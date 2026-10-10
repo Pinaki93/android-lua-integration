@@ -32,11 +32,12 @@ function CommonUi.children(view)
   return children
 end
 
-function CommonUi.scaffold(view, content, toolbar)
+function CommonUi.scaffold(view, content, toolbar, bottomSheet)
   return ui.scaffold {
     content = content,
     toolbar = toolbar,
     alert = view.scaffold.alert,
+    bottomSheet = bottomSheet,
     snackbar = view.message and view.loaded and ui.snackbar { text = view.message, dismissAction = "reading.dismissSnackbar" } or nil,
   }
 end

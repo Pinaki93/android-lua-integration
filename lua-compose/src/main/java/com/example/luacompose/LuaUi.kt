@@ -127,7 +127,7 @@ internal val LocalReadingStyle = compositionLocalOf { false }
 internal fun defaultImageResource(reading: Boolean): Int =
     if (reading) R.drawable.default_reading_icon else R.drawable.default_avatar
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun LuaNode(
     node: UiNode,
@@ -137,6 +137,15 @@ private fun LuaNode(
 ) {
     when (node) {
         is UiNode.Scaffold -> LuaScaffold(node, onAction, onInput, modifier, false)
+        is UiNode.BottomSheet -> androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { onAction(node.dismissAction) },
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            shape = RoundedCornerShape(topStart = node.cornerRadius.dp, topEnd = node.cornerRadius.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            LuaNode(node.content, onAction, onInput,
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp))
+        }
         is UiNode.Toolbar -> LuaToolbar(node, onAction)
         is UiNode.Alert -> AlertDialog(
             onDismissRequest = { onAction(node.dismissAction) },
@@ -336,6 +345,7 @@ private fun LuaScaffold(node: UiNode.Scaffold, onAction: (String) -> Unit, onInp
     ) { padding ->
         LuaUi(LuaUiResult.Success(node.content), onAction, Modifier.fillMaxSize().padding(padding).padding(24.dp), onInput, lazy)
     }
+    node.bottomSheet?.takeIf { node.alert == null }?.let { LuaNode(it, onAction, onInput) }
     node.alert?.let { LuaNode(it, onAction, onInput) }
 }
 

@@ -114,7 +114,7 @@ class LuaUiEngine {
     }
 
     internal fun uiTable() = FrozenTable().apply {
-        listOf("scaffold", "toolbar", "alert", "snackbar", "dialog", "column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
+        listOf("scaffold", "toolbar", "alert", "snackbar", "bottomSheet", "dialog", "column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
             add(LuaValue.valueOf(type), NodeConstructor(type))
         }
         freeze()
@@ -164,12 +164,13 @@ class LuaUiEngine {
                 val type = requiredString(table, "type", path)
                 return when (type) {
                     "scaffold" -> {
-                        fields(table, path, "type", "content", "toolbar", "alert", "snackbar")
+                        fields(table, path, "type", "content", "toolbar", "alert", "snackbar", "bottomSheet")
                         UiNode.Scaffold(
                             parse(table.get("content"), "$path.content", depth + 1),
                             optionalNode<UiNode.Toolbar>(table, "toolbar", path, depth),
                             optionalNode<UiNode.Alert>(table, "alert", path, depth),
                             optionalNode<UiNode.Snackbar>(table, "snackbar", path, depth),
+                            optionalNode<UiNode.BottomSheet>(table, "bottomSheet", path, depth),
                         )
                     }
                     "toolbar" -> {
@@ -190,6 +191,15 @@ class LuaUiEngine {
                     "snackbar" -> {
                         fields(table, path, "type", "text", "dismissAction")
                         UiNode.Snackbar(text(table, "text", path), namedAction(table, "dismissAction", path))
+                    }
+                    "bottomSheet" -> {
+                        fields(table, path, "type", "content", "dismissAction", "cornerRadius")
+                        val radius = table.get("cornerRadius")
+                        if (!radius.isnil() && (!radius.isinttype() || radius.toint() !in 0..64)) {
+                            fail(LuaUiError.Kind.Validation, "Corner radius must be an integer from 0 to 64.")
+                        }
+                        UiNode.BottomSheet(parse(table.get("content"), "$path.content", depth + 1),
+                            namedAction(table, "dismissAction", path), if (radius.isnil()) 28 else radius.toint())
                     }
                     "dialog" -> {
                         fields(table, path, "type", "title", "children", "dismissAction")

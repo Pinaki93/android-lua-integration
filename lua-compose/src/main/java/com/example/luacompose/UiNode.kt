@@ -5,7 +5,7 @@ import java.util.Collections
 
 @Immutable
 sealed interface UiNode {
-    data class Scaffold(val content: UiNode, val toolbar: Toolbar? = null, val alert: Alert? = null, val snackbar: Snackbar? = null) : UiNode
+    data class Scaffold(val content: UiNode, val toolbar: Toolbar? = null, val alert: Alert? = null, val snackbar: Snackbar? = null, val bottomSheet: BottomSheet? = null) : UiNode
 
     @ConsistentCopyVisibility
     data class Toolbar private constructor(val title: String, val backAction: String?, val children: List<UiNode>, val overflow: List<UiNode>) : UiNode {
@@ -42,6 +42,8 @@ sealed interface UiNode {
         constructor(title: String, children: Iterable<UiNode>, dismissAction: String) :
             this(title, children.immutableList(), dismissAction)
     }
+
+    data class BottomSheet(val content: UiNode, val dismissAction: String, val cornerRadius: Int = 28) : UiNode
 
     data class Text(
         val text: String,

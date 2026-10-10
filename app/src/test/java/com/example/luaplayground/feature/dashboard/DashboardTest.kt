@@ -59,6 +59,7 @@ class DashboardTest {
         is UiNode.Alert -> listOfNotNull(title, subtitle) + listOfNotNull(positive, negative).flatMap { it.texts() }
         is UiNode.Snackbar -> listOf(text)
         is UiNode.Button -> listOf(text)
+        is UiNode.BottomSheet -> content.texts()
         is UiNode.Dialog -> listOf(title) + children.flatMap { it.texts() }
         is UiNode.Card -> children.flatMap { it.texts() }
         is UiNode.Column -> children.flatMap { it.texts() }

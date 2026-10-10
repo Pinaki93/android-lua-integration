@@ -87,6 +87,57 @@ class ReadingListTest {
         fun value(field: String) = nodes().filterIsInstance<UiNode.TextField>().single { it.action == "reading.field.$field" }.value
     }
 
+    @Test fun `article sheet wires read edit dismiss and confirmed deletion`() = runTest {
+        val h = Harness(this)
+        h.add(title = "Article", note = "Saved note")
+        h.action("back")
+        fun scaffold() = (h.result as LuaUiResult.Success).root as UiNode.Scaffold
+        h.action("view.id-1")
+        assertEquals(32, scaffold().bottomSheet!!.cornerRadius)
+        val sheet = scaffold().bottomSheet!!.content as UiNode.Column
+        assertTrue(sheet.children.none { it is UiNode.Card })
+        val actions = sheet.children.filterIsInstance<UiNode.Row>().single()
+        assertTrue(actions.wrap)
+        assertEquals(listOf("reading.read", "reading.edit", "reading.delete"),
+            actions.children.filterIsInstance<UiNode.Button>().map { it.action })
+        assertEquals(listOf(UiButtonStyle.Primary, UiButtonStyle.Filter, UiButtonStyle.Destructive),
+            actions.children.filterIsInstance<UiNode.Button>().map { it.style })
+        assertTrue(h.texts().containsAll(listOf("Read", "Edit", "Delete", "Article")))
+        val before = h.memory.snapshot()
+        h.action("add"); h.action("status.Read"); h.field("note", "Hidden")
+        assertEquals(before, h.memory.snapshot())
+        assertNotNull(scaffold().bottomSheet)
+        h.action("dismissSheet")
+        assertNull(scaffold().bottomSheet)
+        h.action("read")
+        assertTrue(h.browsers.isEmpty())
+        h.action("view.id-1"); h.action("read")
+        assertEquals(listOf("https://example.com/article"), h.browsers)
+        assertNull(scaffold().bottomSheet)
+        h.browserFailure = true
+        h.action("view.id-1"); h.action("read")
+        assertNotNull(scaffold().snackbar)
+        h.action("view.id-1"); h.action("edit")
+        assertEquals("Saved note", h.value("note"))
+        h.action("back"); h.action("view.id-1"); h.action("delete")
+        h.action("read"); h.action("edit")
+        assertNotNull(scaffold().alert)
+        h.action("cancelDelete")
+        assertNotNull(scaffold().bottomSheet)
+        assertEquals(before, h.memory.snapshot())
+        h.action("delete")
+        h.memory.failWrite = true
+        h.action("confirmDelete")
+        assertEquals(before, h.memory.snapshot())
+        assertNotNull(scaffold().alert)
+        h.memory.failWrite = false
+        h.action("confirmDelete")
+        assertTrue(h.memory.articles().isEmpty())
+        assertNull(scaffold().bottomSheet)
+        assertNull(scaffold().alert)
+        h.session.close()
+    }
+
     @Test fun `unread badge sits above the listing title and read status stays plain`() = runTest {
         val h = Harness(this)
         h.add(title = "Article")
@@ -100,6 +151,7 @@ class ReadingListTest {
         }
         assertEquals(UiNode.Text("Unread", UiTextStyle.Badge, tone = UiTextTone.Secondary), status())
         h.action("view.id-1")
+        h.action("edit")
         h.action("toggle")
         h.action("back")
         assertEquals(UiNode.Text("Read", UiTextStyle.Label, tone = UiTextTone.Secondary), status())
@@ -283,6 +335,7 @@ class ReadingListTest {
         val article = h.nodes().filterIsInstance<UiNode.Card>().single { it.action != null }
         assertEquals("reading.view.id-1", article.action)
         h.action("view.id-1")
+        h.action("edit")
         assertEquals("Line one\nLine two", h.value("note"))
         h.action("delete")
         assertEquals(UiButtonStyle.Destructive, h.nodes().filterIsInstance<UiNode.Button>().single { it.text == "Delete" }.style)
@@ -297,12 +350,14 @@ class ReadingListTest {
         first.action("back")
         assertEquals("reading.$id", first.nodes().filterIsInstance<UiNode.ListItem>().single().key)
         first.action("view.$id")
+        first.action("edit")
         assertEquals("Saved note", first.value("note"))
         first.session.close()
 
         val restored = Harness(this, memory, compiled = true)
         assertTrue(restored.texts().contains("Saved article"))
         restored.action("view.$id")
+        restored.action("edit")
         assertEquals("Saved note", restored.value("note"))
         restored.session.close()
     }
@@ -318,6 +373,7 @@ class ReadingListTest {
         first.session.close()
         val restored = Harness(this, memory)
         restored.action("view.id-1")
+        restored.action("edit")
         assertEquals("My title", restored.value("title"))
         assertEquals("My offline note", restored.value("note"))
         assertEquals("Tech, Kotlin", restored.value("tags"))
@@ -380,6 +436,7 @@ class ReadingListTest {
         h.session.close()
         val restored = Harness(this, h.memory)
         restored.action("view.id-1")
+        restored.action("edit")
         assertEquals("Fetched title", restored.value("title"))
     }
 
@@ -666,6 +723,7 @@ class ReadingListTest {
         h.action("next")
         assertEquals(1, h.nodes().filterIsInstance<UiNode.ListItem>().size)
         h.action("view.id-1")
+        h.action("edit")
         assertEquals(4000, h.value("note").length)
         h.session.close()
     }
@@ -752,6 +810,7 @@ class ReadingListTest {
         assertTrue(h.texts().contains("Read"))
         assertFalse(h.texts().any { "Title:" in it })
         h.action("view.id-1")
+        h.action("edit")
         h.action("delete")
         assertTrue(h.texts().containsAll(listOf("Cancel", "Delete")))
         h.session.close()
@@ -759,13 +818,14 @@ class ReadingListTest {
 }
 
 private fun UiNode.flatten(): List<UiNode> = listOf(this) + when (this) {
-    is UiNode.Scaffold -> listOfNotNull(content, toolbar, alert, snackbar).flatMap { it.flatten() }
+    is UiNode.Scaffold -> listOfNotNull(content, toolbar, alert, snackbar, bottomSheet).flatMap { it.flatten() }
     is UiNode.Toolbar -> (children + overflow).flatMap { it.flatten() }
     is UiNode.Alert -> listOfNotNull(positive, negative).flatMap { it.flatten() }
     is UiNode.Column -> children.flatMap { it.flatten() }
     is UiNode.Row -> children.flatMap { it.flatten() }
     is UiNode.Card -> children.flatMap { it.flatten() }
     is UiNode.ListItem -> children.flatMap { it.flatten() }
+    is UiNode.BottomSheet -> content.flatten()
     is UiNode.Dialog -> children.flatMap { it.flatten() }
     else -> emptyList()
 }

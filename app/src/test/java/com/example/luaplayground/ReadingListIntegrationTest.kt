@@ -98,6 +98,8 @@ class ReadingListIntegrationTest {
         assertFalse(texts.any { "Title:" in it })
         vm.action("reading.view.article-1")
         runCurrent()
+        vm.action("reading.edit")
+        runCurrent()
         assertEquals("reading.back", vm.readingBackAction)
         vm.action(vm.readingBackAction!!)
         runCurrent()
@@ -111,12 +113,13 @@ class ReadingListIntegrationTest {
 
 private fun LuaUiResult.nodes(): List<UiNode> = if (this is LuaUiResult.Success) root.nodes() else emptyList()
 private fun UiNode.nodes(): List<UiNode> = listOf(this) + when (this) {
-    is UiNode.Scaffold -> listOfNotNull(content, toolbar, alert, snackbar).flatMap { it.nodes() }
+    is UiNode.Scaffold -> listOfNotNull(content, toolbar, alert, snackbar, bottomSheet).flatMap { it.nodes() }
     is UiNode.Toolbar -> (children + overflow).flatMap { it.nodes() }
     is UiNode.Alert -> listOfNotNull(positive, negative).flatMap { it.nodes() }
     is UiNode.Column -> children.flatMap { it.nodes() }
     is UiNode.Row -> children.flatMap { it.nodes() }
     is UiNode.Card -> children.flatMap { it.nodes() }
+    is UiNode.BottomSheet -> content.nodes()
     is UiNode.Dialog -> children.flatMap { it.nodes() }
     is UiNode.ListItem -> children.flatMap { it.nodes() }
     else -> emptyList()

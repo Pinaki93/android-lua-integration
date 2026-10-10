@@ -16,7 +16,39 @@ local function on_event(event)
   elseif action == "add" then
     navigation.navigate("reading-list/add")
   elseif string.match(action, "^view%.") then
-    navigation.navigate("reading-list/edit/" .. string.sub(action, 6))
+    local _, article = view.find(string.sub(action, 6))
+    view.sheetSelected = article and article.id or nil
+  elseif action == "dismissSheet" then
+    view.sheetSelected = nil
+  elseif action == "read" then
+    local _, article = view.find(view.sheetSelected)
+    view.sheetSelected = nil
+    if article and not pcall(reading.open, article.url) then
+      view.message = "Could not open original. A browser and connection are needed."
+    end
+  elseif action == "edit" then
+    local selected = view.sheetSelected
+    view.sheetSelected = nil
+    if selected then navigation.navigate("reading-list/edit/" .. selected) end
+  elseif action == "delete" then
+    local _, article = view.find(view.sheetSelected)
+    if article then
+      baseController.scaffold.showAlert(ui.alert {
+        title = "Delete article?", subtitle = article.title .. "\nThis removes the saved entry and note.",
+        positive = ui.button { text = "Delete", action = "reading.confirmDelete", style = "destructive" },
+        negative = ui.button { text = "Cancel", action = "reading.cancelDelete", style = "quiet" },
+        dismissAction = "reading.cancelDelete",
+      })
+    end
+  elseif action == "cancelDelete" then
+    baseController.scaffold.dismissAlert()
+  elseif action == "confirmDelete" then
+    local ok, failure = baseController.interactor.change(view.sheetSelected, "delete")
+    baseController.refresh(failure, failure and "Could not save articles. Please try again.")
+    if ok then
+      view.sheetSelected = nil
+      baseController.scaffold.dismissAlert()
+    end
   elseif action == "back" then
     navigation.back()
   elseif view.loaded then

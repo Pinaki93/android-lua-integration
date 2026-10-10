@@ -5,7 +5,21 @@ local function render(view)
     local toolbar = ui.toolbar { title = "Reading List", children = {
       ui.iconButton { icon = "add", label = "Add article", action = "reading.add", enabled = view.loaded }
     } }
-    local function scaffold() return CommonUi.scaffold(view, ui.column { gap = 16, children = children }, toolbar) end
+    local _, selected = view.find(view.sheetSelected)
+    local bottomSheet = selected and ui.bottomSheet {
+      dismissAction = "reading.dismissSheet", cornerRadius = 32,
+      content = ui.column { gap = 12, children = {
+        CommonUi.text("YOUR READING QUEUE", "label", "gold"),
+        CommonUi.text(selected.title, "title"),
+        CommonUi.text(reading.hostname(selected.url), "body", "secondary"),
+        ui.row { gap = 12, wrap = true, children = {
+          CommonUi.button("Read", "read", "primary"),
+          CommonUi.button("Edit", "edit", "filter"),
+          CommonUi.button("Delete", "delete", "destructive"),
+        } },
+      } },
+    } or nil
+    local function scaffold() return CommonUi.scaffold(view, ui.column { gap = 16, children = children }, toolbar, bottomSheet) end
 
 	if not view.loaded then
 		return scaffold()

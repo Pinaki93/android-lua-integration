@@ -6,6 +6,24 @@ import org.junit.Test
 class LuaScaffoldTest {
     private val engine = LuaUiEngine()
 
+    @Test fun `bottom sheet validates its tree actions and radius`() {
+        val result = engine.evaluate("""
+            return ui.scaffold { content = ui.text { text = 'Body' },
+              bottomSheet = ui.bottomSheet { content = ui.button { text = 'Read', action = 'read' }, dismissAction = 'dismiss' }
+            }
+        """) as LuaUiResult.Success
+        assertEquals(28, (result.root as UiNode.Scaffold).bottomSheet!!.cornerRadius)
+        for (radius in listOf("-1", "65", "1.5", "'32'", "false")) {
+            assertTrue(engine.evaluate("return ui.bottomSheet { content = ui.text { text = 'Body' }, dismissAction = 'dismiss', cornerRadius = $radius }") is LuaUiResult.Failure)
+        }
+        for (fields in listOf("dismissAction = 'dismiss'", "content = ui.text { text = 'Body' }, dismissAction = '../bad'")) {
+            assertTrue(engine.evaluate("return ui.bottomSheet { $fields }") is LuaUiResult.Failure)
+        }
+        for (radius in listOf(0, 64)) {
+            assertTrue(engine.evaluate("return ui.bottomSheet { content = ui.text { text = 'Body' }, dismissAction = 'dismiss', cornerRadius = $radius }") is LuaUiResult.Success)
+        }
+    }
+
     @Test fun `scaffold slots are optional and alert fields are optional`() {
         val content = UiNode.Text("Body")
         assertEquals(LuaUiResult.Success(UiNode.Scaffold(content)), engine.evaluate("return ui.scaffold { content = ui.text { text = 'Body' } }"))
