@@ -34,7 +34,10 @@ fetch = function()
       local anonymous = item.type == "Anonymous"
       local name = anonymous and item.name or item.login
       if type(name) ~= "string" or name == "" or #name > 200 then fail("Invalid contributor data."); return end
-      page[#page + 1] = { name = name, anonymous = anonymous, count = item.contributions }
+      local avatar = item.avatar_url
+      if type(avatar) ~= "string" or #avatar > 2048 or
+        not string.match(avatar, "^https://avatars%.githubusercontent%.com/[^%s#]*$") then avatar = nil end
+      page[#page + 1] = { name = name, anonymous = anonymous, count = item.contributions, avatar = avatar }
     end
     for _, item in ipairs(page) do records[#records + 1] = item end
     loading = false
@@ -75,9 +78,15 @@ local function render()
   if last > #records then last = #records end
   for index = (ui_page - 1) * 50 + 1, last do
     local item = records[index]
-    children[#children + 1] = ui.listItem { key = "contributor." .. tostring(index), children = {
+    local row = {
+      ui.image { url = item.avatar, label = item.name .. " avatar", circleCrop = true }
+    }
+    row[#row + 1] = ui.column { children = {
       ui.text { text = item.name .. (item.anonymous and " (anonymous)" or "") },
       ui.text { text = tostring(item.count) .. " contributions" }
+    } }
+    children[#children + 1] = ui.listItem { key = "contributor." .. tostring(index), children = {
+      ui.row { gap = 12, children = row }
     } }
   end
   return ui.column { gap = 12, children = children }

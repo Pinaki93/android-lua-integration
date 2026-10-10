@@ -181,4 +181,16 @@ incomplete; Retry resumes the failed page and Refresh starts from page one.
 Requests are public and unauthenticated. GitHub documents
 [pagination and anonymous contributors](https://docs.github.com/en/rest/repos/repos#list-repository-contributors)
 and the shared [60 requests/hour unauthenticated IP limit](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
-Avatars, authentication, caching, uploads and automatic retries are outside this example.
+Contributor avatars are circle cropped; missing or invalid avatar URLs show a bundled default profile picture.
+Authentication, uploads and automatic retries are outside this example.
+
+### Images
+
+`ui.image { url = "https://example.com/photo.jpg", label = "Photo", width = 96, height = 96 }`
+loads a cropped image through Coil. Set `circleCrop = true` to clip it to a circle
+(default: false). Omit `url` to show the bundled default profile picture. The label is required for accessibility. Width and
+height default to 48 dp and must be integers from 1 to 1024. URLs must use HTTPS
+on port 443 without credentials or fragments; local files and Android resources
+are not exposed. Image loading is a separate network capability available to UI
+scripts, independent of the `http` adapter's API allowlist. Failed loads leave the
+image space empty and do not interrupt the rest of the UI.

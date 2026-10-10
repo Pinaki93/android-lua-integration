@@ -28,6 +28,14 @@ sealed interface UiNode {
         val strikeThrough: Boolean = false,
     ) : UiNode
 
+    data class Image(
+        val url: String?,
+        val label: String,
+        val width: Int = 48,
+        val height: Int = 48,
+        val circleCrop: Boolean = false,
+    ) : UiNode
+
     @ConsistentCopyVisibility
     data class Card private constructor(
         val children: List<UiNode>,

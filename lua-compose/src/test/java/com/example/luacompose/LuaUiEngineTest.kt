@@ -128,8 +128,8 @@ class LuaUiEngineTest {
     fun `rejects unknown node fields styles and actions`() {
         assertFailure(
             LuaUiError.Kind.Validation,
-            "Unknown node type 'image' at $.",
-            "return { type = 'image' }",
+            "Unknown node type 'video' at $.",
+            "return { type = 'video' }",
         )
         assertFailure(
             LuaUiError.Kind.Validation,

@@ -33,7 +33,7 @@ class ContributorsTest {
         client.close()
     }
 
-    private fun contributor(index: Int) = """{"login":"user$index","contributions":$index}"""
+    private fun contributor(index: Int) = """{"login":"user$index","contributions":$index,"avatar_url":"https://avatars.githubusercontent.com/u/$index"}"""
     private fun page(from: Int, count: Int) = (from until from + count).joinToString(",", "[", "]", transform=::contributor)
 
     @Test fun `actual script fetches sequential pages preserves order and paginates UI`() = runTest {
@@ -60,10 +60,15 @@ class ContributorsTest {
         assertTrue(result.texts().contains("101 contributors"))
         assertEquals(50,result.nodes().filterIsInstance<UiNode.ListItem>().size)
         assertTrue(result.texts().contains("user1"))
+        assertEquals(UiNode.Image("https://avatars.githubusercontent.com/u/1", "user1 avatar", circleCrop = true),
+            result.nodes().filterIsInstance<UiNode.Image>().first())
+        assertEquals(50, result.nodes().filterIsInstance<UiNode.Image>().size)
         result=session.dispatch(LuaEvent.Action("contributors.next"))
         assertTrue(result.texts().contains("user51"))
         result=session.dispatch(LuaEvent.Action("contributors.next"))
         assertTrue(result.texts().contains("Someone (anonymous)"))
+        assertEquals(listOf(UiNode.Image(null, "Someone avatar", circleCrop = true)),
+            result.nodes().filterIsInstance<UiNode.Image>())
         assertEquals(1,result.nodes().filterIsInstance<UiNode.ListItem>().size)
         assertTrue(result.texts().contains("Page 3 of 3"))
         assertFalse(result.nodes().filterIsInstance<UiNode.Button>().single { it.action=="contributors.next" }.enabled)
@@ -118,6 +123,31 @@ class ContributorsTest {
             if(body=="[]") assertTrue(result.texts().contains("No contributors found."))
             else assertTrue(result.texts().contains("Invalid contributor data."))
             session.close();client.close()
+        }
+    }
+
+    @Test fun `missing and unsafe avatars preserve contributor rows`() = runTest {
+        for (avatar in listOf("null", "42", "\"file:///private/avatar\"",
+            "\"https://evil.com/avatar\"", "\"https://avatars.githubusercontent.com.evil.com/a\"",
+            "\"https://avatars.githubusercontent.com/a#fragment\"", "\"https://avatars.githubusercontent.com/a b\"")) {
+            val client = client {
+                respond("[{\"login\":\"Ada\",\"contributions\":2,\"avatar_url\":$avatar}]",
+                    headers = headersOf("Content-Type", "application/json"))
+            }
+            val queue = ArrayDeque<Pair<Long, LuaHttpClient.Response>>()
+            val session = LuaSession(File("../lua/okhttp-contributors.lua").readText(),
+                storage = { JsonStore({ null }, {}, {}) },
+                http = httpForScript("okhttp-contributors.luac", client), scope = this,
+                completed = { id, response -> queue.add(id to response) })
+            session.start()
+            advanceUntilIdle()
+            val (id, response) = queue.removeFirst()
+            val result = session.complete(id, response)
+            assertTrue(avatar, result.texts().contains("Ada"))
+            assertEquals(avatar, listOf(UiNode.Image(null, "Ada avatar", circleCrop = true)),
+                result.nodes().filterIsInstance<UiNode.Image>())
+            session.close()
+            client.close()
         }
     }
 

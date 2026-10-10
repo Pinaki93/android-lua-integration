@@ -8,6 +8,7 @@ import org.luaj.vm2.LoadState
 import org.luaj.vm2.compiler.LuaC
 import org.luaj.vm2.lib.BaseLib
 import org.luaj.vm2.lib.OneArgFunction
+import java.net.URI
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.Collections
@@ -113,7 +114,7 @@ class LuaUiEngine {
     }
 
     internal fun uiTable() = FrozenTable().apply {
-        listOf("column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton").forEach { type ->
+        listOf("column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton", "image").forEach { type ->
             add(LuaValue.valueOf(type), NodeConstructor(type))
         }
         freeze()
@@ -177,6 +178,16 @@ class LuaUiEngine {
                             style = style(table, path),
                             weight = optionalBoolean(table, "weight", path, false),
                             strikeThrough = optionalBoolean(table, "strikeThrough", path, false),
+                        )
+                    }
+                    "image" -> {
+                        fields(table, path, "type", "url", "label", "width", "height", "circleCrop")
+                        UiNode.Image(
+                            url = if (table.get("url").isnil()) null else imageUrl(table, path),
+                            label = label(table, path),
+                            width = imageDimension(table, "width", path),
+                            height = imageDimension(table, "height", path),
+                            circleCrop = optionalBoolean(table, "circleCrop", path, false),
                         )
                     }
                     "card" -> {
@@ -249,6 +260,25 @@ class LuaUiEngine {
                 fail(LuaUiError.Kind.Validation, "Children at $path must be a contiguous list.")
             }
             return indexes.map { index -> parse(children.get(index), "$path.children[$index]", depth + 1) }
+        }
+
+        private fun imageUrl(table: LuaTable, path: String): String {
+            val url = text(table, "url", path)
+            val uri = try { URI(url) } catch (_: java.net.URISyntaxException) { null }
+            if (uri == null || uri.scheme != "https" || uri.host.isNullOrEmpty() ||
+                uri.rawUserInfo != null || uri.rawFragment != null || uri.port !in listOf(-1, 443)) {
+                fail(LuaUiError.Kind.Validation, "Image URL at $path must be HTTPS without credentials or fragments on port 443.")
+            }
+            return url
+        }
+
+        private fun imageDimension(table: LuaTable, field: String, path: String): Int {
+            val value = table.get(field)
+            if (value.isnil()) return 48
+            if (!value.isinttype() || value.toint() !in 1..1024) {
+                fail(LuaUiError.Kind.Validation, "Field '$field' at $path must be an integer from 1 to 1024.")
+            }
+            return value.toint()
         }
 
         private fun gap(table: LuaTable, path: String): Int {

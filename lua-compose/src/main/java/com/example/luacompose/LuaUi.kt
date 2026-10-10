@@ -1,5 +1,11 @@
 package com.example.luacompose
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -116,6 +122,14 @@ private fun LuaNode(
             modifier = modifier,
             style = node.style.textStyle(MaterialTheme.typography),
             textDecoration = TextDecoration.LineThrough.takeIf { node.strikeThrough },
+        )
+        is UiNode.Image -> AsyncImage(
+            model = node.url,
+            contentDescription = node.label,
+            modifier = modifier.size(node.width.dp, node.height.dp)
+                .then(if (node.circleCrop) Modifier.clip(CircleShape) else Modifier),
+            fallback = painterResource(R.drawable.default_avatar),
+            contentScale = ContentScale.Crop,
         )
         is UiNode.Card -> Card(
             modifier = modifier,
