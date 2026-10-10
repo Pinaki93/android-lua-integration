@@ -6,7 +6,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -31,16 +36,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
@@ -83,7 +82,7 @@ internal fun lazyRoot(node: UiNode, enabled: Boolean): UiNode.Column? =
     (node as? UiNode.Column).takeIf { enabled }
 
 internal fun lazyItemKey(index: Int, node: UiNode): Any =
-    if (node is UiNode.ListItem) "list:${node.toggleAction}" else index
+    if (node is UiNode.ListItem) "list:${node.key}" else index
 
 @Composable
 private fun LuaNode(
@@ -108,13 +107,15 @@ private fun LuaNode(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             node.children.forEach { child ->
-                LuaNode(child, onAction, onInput, if (child is UiNode.Checkbox) Modifier.weight(1f) else Modifier)
+                val weighted = (child is UiNode.Checkbox && child.showLabel) || (child is UiNode.Text && child.weight)
+                LuaNode(child, onAction, onInput, if (weighted) Modifier.weight(1f) else Modifier)
             }
         }
         is UiNode.Text -> Text(
             text = node.text,
             modifier = modifier,
             style = node.style.textStyle(MaterialTheme.typography),
+            textDecoration = TextDecoration.LineThrough.takeIf { node.strikeThrough },
         )
         is UiNode.Card -> Card(
             modifier = modifier,
@@ -178,7 +179,15 @@ private fun LuaNode(
                 )
             }
         }
-        is UiNode.Checkbox -> Row(
+        is UiNode.Checkbox -> if (!node.showLabel) {
+            Checkbox(
+                checked = node.checked,
+                onCheckedChange = checkedInput(node.action, node.enabled, onInput),
+                modifier = modifier.semantics { contentDescription = node.label },
+                enabled = node.enabled,
+                colors = CheckboxDefaults.colors(checkedColor = checkboxColor(MaterialTheme.colorScheme)),
+            )
+        } else Row(
             modifier = modifier.minimumInteractiveComponentSize().fillMaxWidth().toggleable(
                 value = node.checked,
                 enabled = node.enabled,
@@ -190,24 +199,17 @@ private fun LuaNode(
             Text(node.label, Modifier.weight(1f))
             Checkbox(checked = node.checked, onCheckedChange = null, enabled = node.enabled)
         }
-        is UiNode.ListItem -> Row(
+        is UiNode.ListItem -> Column(
             modifier = modifier.padding(horizontal = LIST_ITEM_HORIZONTAL_PADDING.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Checkbox(
-                checked = node.checked,
-                onCheckedChange = checkedInput(node.toggleAction, node.enabled, onInput),
-                enabled = node.enabled,
-                colors = CheckboxDefaults.colors(checkedColor = checkboxColor(MaterialTheme.colorScheme)),
-            )
-            Text(
-                node.text,
-                Modifier.weight(1f),
-                textDecoration = TextDecoration.LineThrough.takeIf { node.checked },
-            )
-            IconButton(onClick = action(node.deleteAction, onAction, node.enabled), enabled = node.enabled) {
-                DeleteIcon()
-            }
+            node.children.forEach { LuaNode(it, onAction, onInput) }
+        }
+        is UiNode.IconButton -> IconButton(
+            onClick = action(node.action, onAction, node.enabled),
+            modifier = modifier,
+            enabled = node.enabled,
+        ) {
+            Icon(node.icon.imageVector(), contentDescription = node.label)
         }
     }
 }
@@ -243,20 +245,11 @@ internal const val LIST_ITEM_HORIZONTAL_PADDING = 4
 internal fun hasListDivider(children: List<UiNode>, index: Int) =
     children.getOrNull(index) is UiNode.ListItem && children.getOrNull(index + 1) is UiNode.ListItem
 
-@Composable
-private fun DeleteIcon() {
-    val color = LocalContentColor.current
-    Canvas(Modifier.size(20.dp).semantics { contentDescription = "Delete task" }) {
-        val stroke = 1.8.dp.toPx()
-        drawLine(color, Offset(size.width * .2f, size.height * .25f), Offset(size.width * .8f, size.height * .25f), stroke, StrokeCap.Round)
-        drawLine(color, Offset(size.width * .4f, size.height * .15f), Offset(size.width * .6f, size.height * .15f), stroke, StrokeCap.Round)
-        drawRect(
-            color = color,
-            topLeft = Offset(size.width * .3f, size.height * .35f),
-            size = Size(size.width * .4f, size.height * .5f),
-            style = Stroke(stroke, cap = StrokeCap.Round),
-        )
-    }
+internal fun UiIcon.imageVector() = when (this) {
+    UiIcon.Delete -> Icons.Default.Delete
+    UiIcon.Add -> Icons.Default.Add
+    UiIcon.Check -> Icons.Default.Check
+    UiIcon.Close -> Icons.Default.Close
 }
 
 internal fun action(name: String, onAction: (String) -> Unit, enabled: Boolean = true): () -> Unit = {

@@ -73,7 +73,7 @@ class LuaUiTest {
 
     @Test
     fun `dividers appear only between adjacent list items`() {
-        val item = UiNode.ListItem("Task", false, "todo.toggle.1", "todo.delete.1")
+        val item = UiNode.ListItem("task.1", listOf(UiNode.Text("Task")))
         val children = listOf(UiNode.Text("Tasks"), item, item, UiNode.Text("End"))
 
         assertFalse(hasListDivider(children, 0))
@@ -129,7 +129,7 @@ class LuaUiTest {
 
     @Test
     fun `lazy list items keep their identity when their position changes`() {
-        val item = UiNode.ListItem("Task", false, "todo.toggle.42", "todo.delete.42")
+        val item = UiNode.ListItem("task.42", listOf(UiNode.Text("Task")))
 
         assertEquals(lazyItemKey(5, item), lazyItemKey(20, item))
         assertEquals(5, lazyItemKey(5, UiNode.Text("Heading")))

@@ -24,6 +24,8 @@ sealed interface UiNode {
     data class Text(
         val text: String,
         val style: UiTextStyle = UiTextStyle.Body,
+        val weight: Boolean = false,
+        val strikeThrough: Boolean = false,
     ) : UiNode
 
     @ConsistentCopyVisibility
@@ -59,17 +61,23 @@ sealed interface UiNode {
         val label: String,
         val action: String,
         val enabled: Boolean = true,
+        val showLabel: Boolean = true,
     ) : UiNode
 
-    @Immutable
-    data class ListItem(
-        val text: String,
-        val checked: Boolean,
-        val toggleAction: String,
-        val deleteAction: String,
+    data class IconButton(
+        val icon: UiIcon,
+        val label: String,
+        val action: String,
         val enabled: Boolean = true,
     ) : UiNode
+
+    @ConsistentCopyVisibility
+    data class ListItem private constructor(val key: String, val children: List<UiNode>) : UiNode {
+        constructor(key: String, children: Iterable<UiNode>) : this(key, children.immutableList())
+    }
 }
+
+enum class UiIcon { Delete, Add, Check, Close }
 
 sealed interface UiInput {
     val action: String

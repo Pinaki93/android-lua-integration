@@ -113,7 +113,7 @@ class LuaUiEngine {
     }
 
     internal fun uiTable() = FrozenTable().apply {
-        listOf("column", "row", "text", "card", "button", "textField", "checkbox", "listItem").forEach { type ->
+        listOf("column", "row", "text", "card", "button", "textField", "checkbox", "listItem", "iconButton").forEach { type ->
             add(LuaValue.valueOf(type), NodeConstructor(type))
         }
         freeze()
@@ -171,8 +171,13 @@ class LuaUiEngine {
                         UiNode.Row(children(table, path, depth), gap(table, path))
                     }
                     "text" -> {
-                        fields(table, path, "type", "text", "style")
-                        UiNode.Text(text(table, "text", path), style(table, path))
+                        fields(table, path, "type", "text", "style", "weight", "strikeThrough")
+                        UiNode.Text(
+                            text = text(table, "text", path),
+                            style = style(table, path),
+                            weight = optionalBoolean(table, "weight", path, false),
+                            strikeThrough = optionalBoolean(table, "strikeThrough", path, false),
+                        )
                     }
                     "card" -> {
                         fields(table, path, "type", "children", "style")
@@ -194,23 +199,25 @@ class LuaUiEngine {
                         )
                     }
                     "checkbox" -> {
-                        fields(table, path, "type", "checked", "label", "action", "enabled")
+                        fields(table, path, "type", "checked", "label", "action", "enabled", "showLabel")
                         UiNode.Checkbox(
                             checked = boolean(table, "checked", path),
                             label = label(table, path),
                             action = action(table, path),
                             enabled = enabled(table, path),
+                            showLabel = optionalBoolean(table, "showLabel", path, true),
                         )
                     }
                     "listItem" -> {
-                        fields(table, path, "type", "text", "checked", "toggleAction", "deleteAction", "enabled")
-                        UiNode.ListItem(
-                            text = text(table, "text", path),
-                            checked = boolean(table, "checked", path),
-                            toggleAction = namedAction(table, "toggleAction", path),
-                            deleteAction = namedAction(table, "deleteAction", path),
-                            enabled = enabled(table, path),
-                        )
+                        fields(table, path, "type", "key", "children")
+                        UiNode.ListItem(namedAction(table, "key", path), children(table, path, depth))
+                    }
+                    "iconButton" -> {
+                        fields(table, path, "type", "icon", "label", "action", "enabled")
+                        val name = requiredString(table, "icon", path)
+                        val icon = UiIcon.entries.firstOrNull { it.name.lowercase() == name }
+                            ?: fail(LuaUiError.Kind.Validation, "Unknown icon '$name' at $path.")
+                        UiNode.IconButton(icon, label(table, path), action(table, path), enabled(table, path))
                     }
                     else -> fail(LuaUiError.Kind.Validation, "Unknown node type '$type' at $path.")
                 }
@@ -316,14 +323,10 @@ class LuaUiEngine {
             return action
         }
 
-        private fun enabled(table: LuaTable, path: String): Boolean {
-            val value = table.get("enabled")
-            if (value.isnil()) return true
-            if (value.type() != LuaValue.TBOOLEAN) {
-                fail(LuaUiError.Kind.Validation, "Field 'enabled' at $path must be a boolean.")
-            }
-            return value.toboolean()
-        }
+        private fun enabled(table: LuaTable, path: String) = optionalBoolean(table, "enabled", path, true)
+
+        private fun optionalBoolean(table: LuaTable, field: String, path: String, default: Boolean): Boolean =
+            if (table.get(field).isnil()) default else boolean(table, field, path)
 
         private fun boolean(table: LuaTable, field: String, path: String): Boolean {
             val value = table.get(field)

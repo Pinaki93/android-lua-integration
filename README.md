@@ -108,6 +108,13 @@ To compile only the Lua sources:
 4. Keep each script below the enforced 500 KB limit.
 5. Add fast unit tests for the screen's behavior and edge cases.
 
+`ui.listItem { key = "item.1", children = { ... } }` is a generic container with a stable list key.
+Build its content with `ui.row`, `ui.checkbox`, `ui.text`, and `ui.iconButton`, as in `lua/todo.lua`.
+Checkboxes can use `showLabel = false` while retaining their accessible `label`; text can use
+`weight = true` inside a row and `strikeThrough = true`. Icon buttons require an accessible
+`label` and an `action`, and support the Compose icons `delete`, `add`, `check`, and `close`.
+The former todo-specific `listItem` fields are replaced by `key` and `children`.
+
 The existing `playground.lua` and `todo.lua` scripts are the simplest references for navigation, events, and persistence.
 
 ## Design principles

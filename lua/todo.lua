@@ -194,11 +194,14 @@ local function render()
   } } end
   for _, item in ipairs(items) do
     children[#children + 1] = ui.listItem {
-      text = item.title,
-      checked = item.completed,
-      toggleAction = "todo.toggle." .. tostring(item.id),
-      deleteAction = "todo.delete." .. tostring(item.id),
-      enabled = editable
+      key = "todo." .. tostring(item.id),
+      children = { ui.row { children = {
+        ui.checkbox { checked = item.completed, label = item.title, showLabel = false,
+          action = "todo.toggle." .. tostring(item.id), enabled = editable },
+        ui.text { text = item.title, weight = true, strikeThrough = item.completed },
+        ui.iconButton { icon = "delete", label = "Delete task: " .. item.title,
+          action = "todo.delete." .. tostring(item.id), enabled = editable }
+      } } }
     }
   end
   return ui.column { gap = 12, children = children }

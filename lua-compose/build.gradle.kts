@@ -26,6 +26,7 @@ dependencies {
 
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.luaj:luaj-jse:3.0.1")
     testImplementation("junit:junit:4.13.2")

@@ -151,11 +151,8 @@ class LuaSession private constructor(
         is UiNode.Button -> event is LuaEvent.Action && node.enabled && node.action == event.action
         is UiNode.TextField -> event is LuaEvent.TextChanged && node.enabled && node.action == event.action
         is UiNode.Checkbox -> event is LuaEvent.CheckedChanged && node.enabled && node.action == event.action
-        is UiNode.ListItem -> node.enabled && when (event) {
-            is LuaEvent.CheckedChanged -> node.toggleAction == event.action
-            is LuaEvent.Action -> node.deleteAction == event.action
-            else -> false
-        }
+        is UiNode.IconButton -> event is LuaEvent.Action && node.enabled && node.action == event.action
+        is UiNode.ListItem -> node.children.any { admits(it, event) }
         is UiNode.Card -> node.children.any { admits(it, event) }
         is UiNode.Column -> node.children.any { admits(it, event) }
         is UiNode.Row -> node.children.any { admits(it, event) }

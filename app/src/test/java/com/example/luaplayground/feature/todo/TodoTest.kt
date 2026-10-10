@@ -125,8 +125,13 @@ class TodoTest {
             cards[0].children.flatMap { it.flatten() }.filterIsInstance<UiNode.Row>().single().children
                 .filterIsInstance<UiNode.Text>().map { it.text },
         )
-        assertEquals(listOf("Done", "Next"), listItems.map { it.text })
-        assertEquals(listOf("todo.delete.1", "todo.delete.2"), listItems.map { it.deleteAction })
+        assertEquals(listOf("todo.1", "todo.2"), listItems.map { it.key })
+        val rows = listItems.map { it.children.single() as UiNode.Row }
+        val texts = rows.map { it.children[1] as UiNode.Text }
+        assertEquals(listOf("Done", "Next"), texts.map { it.text })
+        assertEquals(listOf(true, false), texts.map { it.strikeThrough })
+        assertTrue(texts.all { it.weight })
+        assertEquals(listOf("todo.delete.1", "todo.delete.2"), rows.map { (it.children[2] as UiNode.IconButton).action })
         assertTrue(result.nodes().filterIsInstance<UiNode.Button>().none { it.text == "Add Task" })
 
         val typing = session(memory).apply { start() }.dispatch(LuaEvent.TextChanged("todo.draft", "New task"))
@@ -229,14 +234,13 @@ class TodoTest {
         when (it) {
             is UiNode.Button -> listOf(it.text)
             is UiNode.Checkbox -> listOf(it.label)
-            is UiNode.ListItem -> listOf(it.text)
             is UiNode.Text -> listOf(it.text)
             is UiNode.TextField -> listOf(it.label, it.value) + listOfNotNull(it.error)
             else -> emptyList()
         }
     }
 
-    private fun LuaUiResult.checkboxes() = nodes().filterIsInstance<UiNode.ListItem>()
+    private fun LuaUiResult.checkboxes() = nodes().filterIsInstance<UiNode.Checkbox>()
 
     private fun LuaUiResult.field() = nodes().filterIsInstance<UiNode.TextField>().single()
 
@@ -244,6 +248,7 @@ class TodoTest {
         is UiNode.Card -> children.flatMap { it.flatten() }
         is UiNode.Column -> children.flatMap { it.flatten() }
         is UiNode.Row -> children.flatMap { it.flatten() }
+        is UiNode.ListItem -> children.flatMap { it.flatten() }
         else -> emptyList()
     }
 }
