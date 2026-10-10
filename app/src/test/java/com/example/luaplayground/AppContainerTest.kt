@@ -33,7 +33,7 @@ class AppContainerTest {
         val ready = container.routeRegistry.state.value as LuaRoutesState.Ready
         assertEquals("playground", ready.startRoute)
         assertEquals(
-            listOf(LuaRoute("playground", "playground.luac"), LuaRoute("todo", "todo.luac")),
+            listOf(LuaRoute("playground", "playground.luac"), LuaRoute("todo", "todo.luac"), LuaRoute("okhttp-contributors", "okhttp-contributors.luac")),
             ready.routes,
         )
         assertSame(container.page("todo"), container.page("todo"))

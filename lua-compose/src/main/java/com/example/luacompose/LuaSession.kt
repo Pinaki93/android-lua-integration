@@ -1,17 +1,8 @@
 package com.example.luacompose
 
+import kotlinx.coroutines.*
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
-import java.util.Collections
-import java.util.IdentityHashMap
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
 import org.luaj.vm2.Globals
 import org.luaj.vm2.LuaError
 import org.luaj.vm2.LuaFunction
@@ -42,13 +33,39 @@ class LuaSession private constructor(
     private val store: JsonStore? = null,
     private val storage: ((String) -> JsonStore)? = null,
     private val navigation: LuaNavigation? = null,
+    private val http: LuaHttpClient? = null,
+    private val scope: CoroutineScope? = null,
+    private val completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
 ) : AutoCloseable {
     constructor(script: ByteArray, store: JsonStore? = null) : this(script, null, store, null, null)
     constructor(script: String, store: JsonStore? = null) : this(null, script, store, null, null)
-    constructor(script: ByteArray, storage: (String) -> JsonStore, navigation: LuaNavigation? = null) :
-        this(script, null, null, storage, navigation)
-    constructor(script: String, storage: (String) -> JsonStore, navigation: LuaNavigation? = null) :
-        this(null, script, null, storage, navigation)
+    constructor(
+        script: ByteArray,
+        storage: (String) -> JsonStore,
+        navigation: LuaNavigation? = null,
+        http: LuaHttpClient? = null,
+        scope: CoroutineScope? = null,
+        completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
+    ) :
+        this(script, null, null, storage, navigation, http, scope, completed)
+    constructor(
+        script: String,
+        storage: (String) -> JsonStore,
+        navigation: LuaNavigation? = null,
+        http: LuaHttpClient? = null,
+        scope: CoroutineScope? = null,
+        completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
+    ) :
+        this(null, script, null, storage, navigation, http, scope, completed)
+    init {
+        require(http == null || scope != null && completed != null) {
+            "HTTP requires a request scope and completion queue."
+        }
+    }
+
+    private val callbacks = mutableMapOf<Long, LuaFunction>()
+    private val jobs = mutableMapOf<Long, Job>()
+    private var nextRequest = 0L
     private var globals: Globals? = null
     private var render: LuaFunction? = null
     private var onEvent: LuaFunction? = null
@@ -74,6 +91,7 @@ class LuaSession private constructor(
         store?.let { environment.set("store", storeTable(it)) }
         storage?.let { environment.set("storage", storageTable(it)) }
         navigation?.let { environment.set("navigation", navigationTable(it)) }
+        http?.let { environment.set("http", httpTable(it)) }
         val chunk = try {
             source?.let { environment.load(it, "ui.lua") }
                 ?: environment.load(ByteArrayInputStream(bytecode!!), "ui.luac", "b", environment)
@@ -114,6 +132,7 @@ class LuaSession private constructor(
 
     @Synchronized
     override fun close() {
+        cancelRequests()
         terminal = true
         result = LuaUiResult.Failure(listOf(LuaUiError(LuaUiError.Kind.Runtime, "Lua session is closed.")))
         globals = null
@@ -175,10 +194,55 @@ class LuaSession private constructor(
         freeze()
     }
 
+    @Synchronized
+    fun complete(id: Long, response: LuaHttpClient.Response): LuaUiResult {
+        if (terminal) return failure()
+        val callback = callbacks.remove(id) ?: return result ?: failure()
+        jobs.remove(id)
+        try {
+            if (callback.invoke(http!!.table(response)).narg() != 0) {
+                return stop(LuaUiError.Kind.Validation, "HTTP callback must return no values.")
+            }
+        } catch (_: Exception) {
+            return stop(LuaUiError.Kind.Runtime, "HTTP callback failed.")
+        }
+        return render()
+    }
+
+    private fun cancelRequests() {
+        jobs.values.forEach { it.cancel() }
+        jobs.clear()
+        callbacks.clear()
+    }
+
+    private fun httpTable(client: LuaHttpClient) = LuaUiEngine.FrozenTable().apply {
+        add(LuaValue.valueOf("null"), client.nullValue)
+        add(LuaValue.valueOf("request"), object : VarArgFunction() {
+            override fun invoke(args: Varargs): Varargs {
+                if (rendering) throw LuaError("http: unavailable during render")
+                if (args.narg() != 2 || !args.arg(2).isfunction()) throw LuaError("http: invalid arguments")
+                val id = ++nextRequest
+                callbacks[id] = args.arg(2).checkfunction()
+                val request = try {
+                    if (callbacks.size > 4) throw LuaHttpClient.Failure("pending_limit")
+                    client.parse(args.arg1())
+                } catch (failure: LuaHttpClient.Failure) {
+                    completed!!(id, LuaHttpClient.Response(error = failure.code))
+                    return LuaValue.NONE
+                }
+                jobs[id] = scope!!.launch {
+                    completed!!(id, client.execute(request))
+                }
+                return LuaValue.NONE
+            }
+        })
+        freeze()
+    }
+
     private fun storeTable(value: JsonStore) = LuaUiEngine.FrozenTable().apply {
-        add(LuaValue.valueOf("create"), StoreFunction(1) { value.create(encode(it.arg1())); LuaValue.TRUE })
-        add(LuaValue.valueOf("read"), StoreFunction(0) { value.read()?.let(::decode) ?: LuaValue.NIL })
-        add(LuaValue.valueOf("update"), StoreFunction(1) { value.update(encode(it.arg1())); LuaValue.TRUE })
+        add(LuaValue.valueOf("create"), StoreFunction(1) { value.create(json.encode(it.arg1())); LuaValue.TRUE })
+        add(LuaValue.valueOf("read"), StoreFunction(0) { value.read()?.let(json::decode) ?: LuaValue.NIL })
+        add(LuaValue.valueOf("update"), StoreFunction(1) { value.update(json.encode(it.arg1())); LuaValue.TRUE })
         add(LuaValue.valueOf("delete"), StoreFunction(0) { value.delete(); LuaValue.TRUE })
         freeze()
     }
@@ -244,77 +308,14 @@ class LuaSession private constructor(
         }
     }
 
-    private fun encode(value: LuaValue): String {
-        if (!value.istable()) throw JsonFailure()
-        return luaToJson(value, 1, Collections.newSetFromMap(IdentityHashMap())).toString()
-    }
-
-    private fun luaToJson(value: LuaValue, depth: Int, active: MutableSet<LuaTable>): JsonElement {
-        if (depth > MAX_JSON_DEPTH) throw JsonFailure()
-        return when {
-            value.isboolean() -> JsonPrimitive(value.toboolean())
-            value.isnumber() -> {
-                val number = value.todouble()
-                if (!number.isFinite()) throw JsonFailure()
-                if (number == kotlin.math.floor(number) && number >= Long.MIN_VALUE && number <= Long.MAX_VALUE) {
-                    JsonPrimitive(number.toLong())
-                } else JsonPrimitive(number)
-            }
-            value.type() == LuaValue.TSTRING -> JsonPrimitive(value.tojstring())
-            value.istable() -> tableToJson(value.checktable(), depth, active)
-            else -> throw JsonFailure()
-        }
-    }
-
-    private fun tableToJson(table: LuaTable, depth: Int, active: MutableSet<LuaTable>): JsonElement {
-        if (!active.add(table)) throw JsonFailure()
-        try {
-            val keys = table.keys().toList()
-            if (keys.isEmpty()) return JsonArray(emptyList())
-            val indexes = keys.mapNotNull { if (it.isinttype() && it.toint() > 0) it.toint() else null }.sorted()
-            if (indexes.size == keys.size) {
-                if (indexes != (1..indexes.size).toList()) throw JsonFailure()
-                return JsonArray(indexes.map { luaToJson(table.get(it), depth + 1, active) })
-            }
-            if (keys.any { it.type() != LuaValue.TSTRING }) throw JsonFailure()
-            return JsonObject(keys.associate { it.tojstring() to luaToJson(table.get(it), depth + 1, active) })
-        } finally {
-            active.remove(table)
-        }
-    }
-
-    private fun decode(json: String): LuaValue {
-        val value = kotlinx.serialization.json.Json.parseToJsonElement(json)
-        if (value !is JsonArray && value !is JsonObject) throw LuaError("store: invalid data")
-        return jsonToLua(value, 1)
-    }
-
-    private fun jsonToLua(value: JsonElement, depth: Int): LuaValue {
-        if (depth > MAX_JSON_DEPTH) throw LuaError("store: invalid data")
-        return when (value) {
-            JsonNull -> LuaValue.NIL
-            is JsonArray -> LuaTable().apply { value.forEachIndexed { index, item -> set(index + 1, jsonToLua(item, depth + 1)) } }
-            is JsonObject -> LuaTable().apply { value.forEach { (key, item) -> set(key, jsonToLua(item, depth + 1)) } }
-            is JsonPrimitive -> when {
-                value.isString -> LuaValue.valueOf(value.content)
-                value.booleanOrNull != null -> LuaValue.valueOf(value.booleanOrNull!!)
-                value.doubleOrNull != null -> LuaValue.valueOf(value.doubleOrNull!!)
-                else -> throw LuaError("store: invalid data")
-            }
-        }
-    }
-
     private fun stop(kind: LuaUiError.Kind, message: String): LuaUiResult =
-        LuaUiResult.Failure(listOf(LuaUiError(kind, message))).also { result = it; terminal = true }
+        LuaUiResult.Failure(listOf(LuaUiError(kind, message))).also { result = it; terminal = true; cancelRequests() }
 
     private fun failure() = result ?: LuaUiResult.Failure(listOf(LuaUiError(LuaUiError.Kind.Runtime, "Lua session is closed.")))
 
     private class SessionFailure : RuntimeException()
-    private class JsonFailure : RuntimeException()
+    private val json = LuaJson()
 
-    private companion object {
-        const val MAX_JSON_DEPTH = 32
-    }
 }
 
 private val JsonStoreError.message: String

@@ -8,10 +8,19 @@ class LuaApplication : Application() {
     lateinit var container: AppContainer
         private set
 
+    private val httpClient by lazy {
+        io.ktor.client.HttpClient(io.ktor.client.engine.android.Android) {
+            followRedirects = false
+            expectSuccess = false
+            engine { connectTimeout = 30_000; socketTimeout = 30_000 }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(
             assetManager = AssetManager(assets),
+            httpClient = httpClient,
             storageFactory = { name -> persistentJsonStore(File(filesDir, name)) },
         )
         container.start()

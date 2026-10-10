@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.luacompose.LuaHttpClient
 import com.example.luacompose.JsonStore
 import com.example.luacompose.LuaEvent
 import com.example.luacompose.LuaNavigation
@@ -27,10 +28,11 @@ class LuaContainer(
     val navigator: Navigator,
     private val storage: (String) -> JsonStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val http: LuaHttpClient? = null,
 ) {
     fun createVm(arguments: Map<String, String> = emptyMap()) =
         LuaContainerVm(
-            { scope ->
+            { scope, completed ->
                 LuaSession(
                     script(),
                     storage,
@@ -39,6 +41,7 @@ class LuaContainer(
                         navigate = { scope.launch { navigator.navigate(it) } },
                         back = { scope.launch { navigator.popBackStack() } },
                     ),
+                    http, CoroutineScope(scope.coroutineContext + io), completed,
                 )
             },
             io,
@@ -46,12 +49,12 @@ class LuaContainer(
 }
 
 class LuaContainerVm internal constructor(
-    private val sessionFactory: (CoroutineScope) -> LuaSession,
+    private val sessionFactory: (CoroutineScope, (Long, LuaHttpClient.Response) -> Unit) -> LuaSession,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     initial: LuaUiResult? = null,
 ) : ViewModel() {
     internal constructor(session: LuaSession, io: CoroutineDispatcher = Dispatchers.IO, initial: LuaUiResult? = null) :
-        this({ session }, io, initial)
+        this({ _, _ -> session }, io, initial)
 
     constructor(
         script: ByteArray,
@@ -83,7 +86,11 @@ class LuaContainerVm internal constructor(
 
     private val events = Channel<QueuedEvent>(Channel.UNLIMITED)
     private var revision = 0L
-    private val session by lazy(LazyThreadSafetyMode.NONE) { sessionFactory(viewModelScope) }
+    private val session by lazy(LazyThreadSafetyMode.NONE) {
+        sessionFactory(viewModelScope) { id, response ->
+            events.trySend(QueuedEvent.Completion(id, response))
+        }
+    }
 
     var result by mutableStateOf(initial ?: LuaUiResult.Success(UiNode.Text("Loading…")))
         private set
@@ -97,8 +104,13 @@ class LuaContainerVm internal constructor(
                 isLoading = false
             }
             for (queued in events) {
-                val next = withContext(io) { session.dispatch(queued.event) }
-                if (queued.revision == revision) result = next
+                val next = withContext(io) {
+                    when (queued) {
+                        is QueuedEvent.Input -> session.dispatch(queued.event)
+                        is QueuedEvent.Completion -> session.complete(queued.id, queued.response)
+                    }
+                }
+                if (queued is QueuedEvent.Completion || queued is QueuedEvent.Input && queued.revision == revision) result = next
             }
         }
     }
@@ -122,7 +134,7 @@ class LuaContainerVm internal constructor(
 
     private fun enqueue(event: LuaEvent): Boolean {
         val next = revision + 1
-        if (events.trySend(QueuedEvent(next, event)).isFailure) return false
+        if (events.trySend(QueuedEvent.Input(next, event)).isFailure) return false
         revision = next
         return true
     }
@@ -132,7 +144,10 @@ class LuaContainerVm internal constructor(
         session.close()
     }
 
-    private data class QueuedEvent(val revision: Long, val event: LuaEvent)
+    private sealed interface QueuedEvent {
+        data class Input(val revision: Long, val event: LuaEvent) : QueuedEvent
+        data class Completion(val id: Long, val response: LuaHttpClient.Response) : QueuedEvent
+    }
 }
 
 private fun UiNode.withInput(input: UiInput): UiNode = when (this) {

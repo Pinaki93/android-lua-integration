@@ -75,7 +75,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.navigation:navigation-compose:2.9.5")
     implementation("org.luaj:luaj-jse:3.0.1")
+    implementation("io.ktor:ktor-client-core:3.3.3")
+    implementation("io.ktor:ktor-client-android:3.3.3")
+    testImplementation("io.ktor:ktor-client-mock:3.3.3")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     luaCompiler("org.luaj:luaj-jse:3.0.1")
 }

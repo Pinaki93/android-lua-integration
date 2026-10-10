@@ -15,6 +15,7 @@ class AppContainer(
     val luaUiEngine: LuaUiEngine = LuaUiEngine(),
     private val storageFactory: (String) -> JsonStore = { JsonStore(read = { null }, write = {}, delete = {}) },
     val routeRegistry: LuaRouteRegistry = LuaRouteRegistry(),
+    private val httpClient: io.ktor.client.HttpClient? = null,
 ) {
     private val dashboard = DashboardContainer(assetManager, luaUiEngine, navigator)
     private var pages = emptyMap<String, LuaContainer>()
@@ -44,7 +45,7 @@ class AppContainer(
                 routes.associate { route ->
                     val script = assetManager.readPage(route.script)
                     require(script.size <= LuaUiEngine.MAX_SCRIPT_BYTES)
-                    route.pattern to LuaContainer({ script }, navigator, ::storage)
+                    route.pattern to LuaContainer({ script }, navigator, ::storage, http = httpForScript(route.script, httpClient))
                 }
             }.getOrElse {
                 routeRegistry.fail()

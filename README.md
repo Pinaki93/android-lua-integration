@@ -128,3 +128,57 @@ The existing `playground.lua` and `todo.lua` scripts are the simplest references
 ## Status
 
 This project is an experimental reference implementation. It demonstrates the core runtime boundary and several end-to-end flows, but its Compose compatibility layer is intentionally incomplete and its scripts are packaged locally with the application.
+
+### HTTP capability
+
+Network access is assigned in Kotlin by compiled script asset identity, in
+`HttpPermissions.kt`. Only `okhttp-contributors.luac` receives the adapter; other
+scripts have no `http` global. Scripts cannot grant themselves permission. The
+application owns the Android Ktor engine. Redirects are disabled (the Android
+engine also disables underlying connection redirects). New adapters must use an
+engine that does not follow redirects itself.
+
+```lua
+http.request({
+  url = "https://api.github.com/repos/lysine-dev/okhttp/contributors",
+  method = "GET", -- GET is the default
+  query = { page = "1", per_page = "100", anon = "1" },
+  headers = { Accept = "application/vnd.github+json" }
+}, function(response)
+  -- response.status, response.headers (lowercase keys), response.body
+  -- response.json for application/json and +json content types
+  -- response.error.code when a request fails
+end)
+```
+
+The generic adapter supports GET, POST, PUT, PATCH, DELETE, HEAD and OPTIONS.
+Options accept string query/header values and either `body` (a string) or `json`
+(a JSON-compatible Lua table). GET and HEAD reject bodies to preserve their method
+on the Android engine. JSON null uses `http.null`, including inside
+arrays. Callbacks must return no values. Requests are allowed during script
+initialization, events and callbacks, but never during rendering. The capability
+table is frozen. Validation errors with a valid callback are queued just like
+network results; invalid callback signatures and render-time requests raise Lua
+errors.
+
+Error codes are `validation`, `policy`, `transport`, `timeout`, `invalid_json`,
+`request_size`, `response_size` and `pending_limit`. HTTP error statuses and
+redirects remain inspectable responses, with status, headers and raw body.
+Limits are 30 seconds, 256 KiB request bodies, 1 MiB streamed response bodies,
+JSON depth 32 and four outstanding requests per session. Session closure or
+terminal Lua failure cancels outstanding requests. Callbacks run serially through
+the ViewModel event queue, on the Lua worker, and duplicate/late completions are
+ignored.
+
+The native contributors policy allows only GET over HTTPS to port 443 on
+`api.github.com`, exactly `/repos/lysine-dev/okhttp/contributors`, with one each of
+`page` (positive integer), `per_page=100` and `anon=1`. Credentials, fragments,
+encoded/ambiguous paths and routing-header overrides are rejected before sending.
+
+The OkHttp Contributors example fetches API pages sequentially and displays 50
+records per UI page. Failed pages keep earlier records explicitly marked
+incomplete; Retry resumes the failed page and Refresh starts from page one.
+Requests are public and unauthenticated. GitHub documents
+[pagination and anonymous contributors](https://docs.github.com/en/rest/repos/repos#list-repository-contributors)
+and the shared [60 requests/hour unauthenticated IP limit](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+Avatars, authentication, caching, uploads and automatic retries are outside this example.
