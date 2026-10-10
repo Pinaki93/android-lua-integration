@@ -55,6 +55,7 @@ Lua is not given direct access to the filesystem, network, or Android framework.
 - A persistent JSON storage adapter with validation, size limits, and atomic file writes.
 - A native dashboard rendered from a Lua-defined UI tree and Kotlin-provided state.
 - A Lua-driven todo screen that demonstrates input handling, validation, persistence, and error states.
+- A Lua-driven OkHttp Contributors screen that demonstrates GitHub API pagination, retry and refresh actions, and contributor avatars through a restricted native HTTP adapter.
 - A Gradle build step that compiles `.lua` sources into stripped `.luac` assets before the Android build.
 - Fast unit tests for the Lua boundary, UI parsing, storage, navigation, application startup, and example screens.
 
