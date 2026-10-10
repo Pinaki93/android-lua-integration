@@ -81,7 +81,7 @@ fun LuaUi(
                         contentType = { _, child -> child::class },
                     ) { index, child ->
                         LuaNode(child, onAction, onInput, Modifier.fillMaxWidth())
-                        if (hasListDivider(root.children, index)) HorizontalDivider()
+                        if (hasListDivider(root.children, index, LocalReadingStyle.current)) HorizontalDivider()
                     }
                 }
             } else {
@@ -123,7 +123,7 @@ private fun LuaNode(
         ) {
             node.children.forEachIndexed { index, child ->
                 LuaNode(child, onAction, onInput)
-                if (hasListDivider(node.children, index)) HorizontalDivider()
+                if (hasListDivider(node.children, index, LocalReadingStyle.current)) HorizontalDivider()
             }
         }
         is UiNode.Row -> if (node.wrap) {
@@ -309,8 +309,8 @@ internal fun checkboxColor(colors: ColorScheme) = colors.tertiary
 
 internal const val LIST_ITEM_HORIZONTAL_PADDING = 4
 
-internal fun hasListDivider(children: List<UiNode>, index: Int) =
-    children.getOrNull(index) is UiNode.ListItem && children.getOrNull(index + 1) is UiNode.ListItem
+internal fun hasListDivider(children: List<UiNode>, index: Int, reading: Boolean = false) =
+    !reading && children.getOrNull(index) is UiNode.ListItem && children.getOrNull(index + 1) is UiNode.ListItem
 
 internal fun UiIcon.imageVector() = when (this) {
     UiIcon.Delete -> Icons.Default.Delete

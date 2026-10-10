@@ -83,6 +83,15 @@ class LuaUiTest {
     }
 
     @Test
+    fun `reading list items have no dividers`() {
+        val item = UiNode.ListItem("reading.1", listOf(UiNode.Text("Article")))
+        val children = listOf(item, item)
+
+        assertFalse(hasListDivider(children, 0, reading = true))
+        assertFalse(hasListDivider(children, 1, reading = true))
+    }
+
+    @Test
     fun `button callback propagates its named action exactly`() {
         val actions = mutableListOf<String>()
 
