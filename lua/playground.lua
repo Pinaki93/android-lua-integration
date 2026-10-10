@@ -1,5 +1,5 @@
 local function on_event(event)
-  if event.action == "playground.reading" then navigation.navigate("reading-list") end
+  if event.action == "playground.reading" then navigation.navigate("reading-list/index") end
   if event.action == "playground.contributors" then navigation.navigate("okhttp-contributors") end
   if event.action == "playground.dashboard" then navigation.navigate("dashboard") end
   if event.action == "playground.todo" then navigation.navigate("todo") end

@@ -32,8 +32,9 @@ class AppContainerTest {
         scheduled!!()
         val ready = container.routeRegistry.state.value as LuaRoutesState.Ready
         assertEquals("playground", ready.startRoute)
+        val theme = mapOf("primary" to 0xFF176047L, "onPrimary" to 0xFFFFFFFFL)
         assertEquals(
-            listOf(LuaRoute("playground", "playground.luac"), LuaRoute("todo", "todo.luac"), LuaRoute("okhttp-contributors", "okhttp-contributors.luac"), LuaRoute("reading-list", "reading-list.luac")),
+            listOf(LuaRoute("playground", "playground.luac"), LuaRoute("todo", "todo.luac"), LuaRoute("okhttp-contributors", "okhttp-contributors.luac"), LuaRoute("reading-list/index", "reading-list/reading-list-controller.luac", theme), LuaRoute("reading-list/add", "reading-list/reading-list-add-controller.luac", theme), LuaRoute("reading-list/edit/{id}", "reading-list/reading-list-add-controller.luac", theme)),
             ready.routes,
         )
         assertSame(container.page("todo"), container.page("todo"))

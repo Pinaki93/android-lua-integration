@@ -1,5 +1,5 @@
 registerRoute("playground", "playground.luac")
 registerRoute("todo", "todo.luac")
 registerRoute("okhttp-contributors", "okhttp-contributors.luac")
-registerRoute("reading-list", "reading-list.luac")
+loadFeature("reading-list")
 setStartRoute("playground")

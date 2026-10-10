@@ -21,7 +21,7 @@ class ReadingListIntegrationTest {
         val title = CompletableDeferred<LuaHttpClient.Response>()
         var fetches = 0
         val container = com.example.luaplayground.feature.dynamic.LuaContainer(
-            script = { compiled("reading-list.luac") },
+            script = { compiledReadingFixture() },
             navigator = AppNavigator,
             storage = { name -> assertEquals("reading-list.json", name); memory },
             io = main.dispatcher,
@@ -57,7 +57,7 @@ class ReadingListIntegrationTest {
     @Test fun `system back action returns add and edit forms to list without saving drafts`() = runTest(main.dispatcher) {
         var saved: ByteArray? = null
         val container = com.example.luaplayground.feature.dynamic.LuaContainer(
-            script = { compiled("reading-list.luac") },
+            script = { compiledReadingFixture() },
             navigator = AppNavigator,
             storage = { JsonStore({ saved }, { saved = it.copyOf() }, {}) },
             io = main.dispatcher,

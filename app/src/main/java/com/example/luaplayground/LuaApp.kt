@@ -136,7 +136,8 @@ private fun DynamicNavHost(
                 val content: @Composable () -> Unit = {
                     LuaFeature(container.page(route.pattern), arguments, showBack = route.pattern != startRoute)
                 }
-                if (route.script == "reading-list.luac") com.example.luacompose.ReadingTheme(content)
+                if (route.script == "reading-list.luac" || route.script.startsWith("reading-list/")) com.example.luacompose.ReadingTheme(route.theme, content)
+                else if (route.theme.isNotEmpty()) com.example.luacompose.FeatureTheme(route.theme, content)
                 else content()
             }
         }

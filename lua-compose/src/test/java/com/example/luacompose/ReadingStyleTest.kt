@@ -6,6 +6,14 @@ import org.junit.Test
 import kotlin.math.pow
 
 class ReadingStyleTest {
+    @Test fun `feature themes override supported colors and retain unspecified colors`() {
+        val base = readingColors(false)
+        val colors = base.withFeatureColors(mapOf("primary" to 0xFF123456L, "secondary" to 0xFF654321L))
+        org.junit.Assert.assertEquals(androidx.compose.ui.graphics.Color(0xFF123456L), colors.primary)
+        org.junit.Assert.assertEquals(androidx.compose.ui.graphics.Color(0xFF654321L), colors.secondary)
+        org.junit.Assert.assertEquals(base.surface, colors.surface)
+    }
+
     @Test fun `reading images use the bookplate while other images keep the avatar`() {
         assertEquals(R.drawable.default_reading_icon, defaultImageResource(reading = true))
         assertEquals(R.drawable.default_avatar, defaultImageResource(reading = false))

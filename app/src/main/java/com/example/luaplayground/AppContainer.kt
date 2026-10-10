@@ -26,6 +26,7 @@ class AppContainer(
     fun start(runInBackground: (() -> Unit) -> Unit = { Thread(it, "lua-app").start() }) {
         runInBackground {
             val routes = mutableListOf<LuaRoute>()
+            val themes = mutableMapOf<String, Map<String, Long>>()
             var startRoute: String? = null
             var startRouteCalls = 0
             val result = runCatching {
@@ -33,6 +34,8 @@ class AppContainer(
                     assetManager.readApp(),
                     registerRoute = { route, script -> routes += LuaRoute(route, script) },
                     setStartRoute = { startRoute = it; startRouteCalls++ },
+                    readFeature = assetManager::readPage,
+                    registerTheme = { feature, theme -> require(themes.put(feature, theme) == null) },
                 )
             }.getOrElse {
                 routeRegistry.fail()
@@ -42,12 +45,14 @@ class AppContainer(
                 routeRegistry.fail()
                 return@runInBackground
             }
+            routes.replaceAll { it.copy(theme = themes[it.pattern.substringBefore('/')] ?: emptyMap()) }
             val loaded = runCatching {
                 routes.associate { route ->
                     val script = assetManager.readPage(route.script)
                     require(script.size <= LuaUiEngine.MAX_SCRIPT_BYTES)
                     route.pattern to LuaContainer({ script }, navigator, ::storage, http = httpForScript(route.script, httpClient),
-                        reading = reading.takeIf { route.script == "reading-list.luac" })
+                        reading = reading.takeIf { route.script == "reading-list.luac" || route.script.startsWith("reading-list/") },
+                        modules = if (route.script.startsWith("reading-list/")) listOf("base-controller", "reading-interactor", "common-ui", "reading-list", "reading-list-add").associateWith { assetManager.readPage("reading-list/$it.luac") } else emptyMap())
                 }
             }.getOrElse {
                 routeRegistry.fail()

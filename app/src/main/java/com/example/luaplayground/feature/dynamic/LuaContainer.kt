@@ -30,6 +30,7 @@ class LuaContainer(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val http: LuaHttpClient? = null,
     private val reading: com.example.luacompose.ReadingCapabilities? = null,
+    private val modules: Map<String, ByteArray> = emptyMap(),
 ) {
     fun createVm(arguments: Map<String, String> = emptyMap()) =
         LuaContainerVm(
@@ -42,7 +43,7 @@ class LuaContainer(
                         navigate = { scope.launch { navigator.navigate(it) } },
                         back = { scope.launch { navigator.popBackStack() } },
                     ),
-                    http, CoroutineScope(scope.coroutineContext + io), completed, reading,
+                    http, CoroutineScope(scope.coroutineContext + io), completed, reading, modules,
                 )
             },
             io,
@@ -108,10 +109,11 @@ class LuaContainerVm internal constructor(
                 val next = withContext(io) {
                     when (queued) {
                         is QueuedEvent.Input -> session.dispatch(queued.event)
+                        QueuedEvent.Resume -> session.resume()
                         is QueuedEvent.Completion -> session.complete(queued.id, queued.response)
                     }
                 }
-                if (queued is QueuedEvent.Completion || queued is QueuedEvent.Input && queued.revision == revision) result = next
+                if (queued is QueuedEvent.Completion || queued == QueuedEvent.Resume || queued is QueuedEvent.Input && queued.revision == revision) result = next
             }
         }
     }
@@ -120,6 +122,10 @@ class LuaContainerVm internal constructor(
         get() = ((result as? LuaUiResult.Success)?.root as? UiNode.Column)?.children
             ?.filterIsInstance<UiNode.Button>()
             ?.firstOrNull { it.enabled && it.action == "reading.back" }?.action
+
+    fun resume() {
+        events.trySend(QueuedEvent.Resume)
+    }
 
     fun action(action: String) {
         enqueue(LuaEvent.Action(action))
@@ -151,6 +157,7 @@ class LuaContainerVm internal constructor(
     }
 
     private sealed interface QueuedEvent {
+        data object Resume : QueuedEvent
         data class Input(val revision: Long, val event: LuaEvent) : QueuedEvent
         data class Completion(val id: Long, val response: LuaHttpClient.Response) : QueuedEvent
     }

@@ -30,6 +30,14 @@ fun LuaFeature(
     showBack: Boolean,
 ) {
     val viewModel = viewModel { container.createVm(arguments) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle, viewModel) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.resume()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val scope = rememberCoroutineScope()
     val readingBackAction = viewModel.readingBackAction
     BackHandler(enabled = showBack || readingBackAction != null) {

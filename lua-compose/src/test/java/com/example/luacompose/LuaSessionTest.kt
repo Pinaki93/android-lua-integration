@@ -5,6 +5,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LuaSessionTest {
+    @Test fun `resume refreshes state and rejects invalid callbacks`() {
+        val session = LuaSession("""
+            local count = 0
+            return {
+              render = function() return ui.text { text = tostring(count) } end,
+              onEvent = function() end,
+              onResume = function() count = count + 1 end
+            }
+        """.trimIndent())
+        assertEquals(UiNode.Text("0"), session.start().root())
+        assertEquals(UiNode.Text("1"), session.resume().root())
+        session.close()
+        assertTrue(session.resume() is LuaUiResult.Failure)
+        listOf("false", "function() return 1 end", "function() error('failed') end").forEach { callback ->
+            val invalid = LuaSession("return { render = function() return ui.text { text = 'ok' } end, onEvent = function() end, onResume = $callback }")
+            assertTrue(invalid.resume() is LuaUiResult.Failure)
+        }
+    }
+
     @Test fun `retains closures and admits only matching enabled events`() {
         val session = LuaSession(
             """

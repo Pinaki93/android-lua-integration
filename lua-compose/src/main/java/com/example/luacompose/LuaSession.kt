@@ -37,6 +37,7 @@ class LuaSession private constructor(
     private val scope: CoroutineScope? = null,
     private val completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
     private val reading: ReadingCapabilities? = null,
+        private val modules: Map<String, ByteArray> = emptyMap(),
 ) : AutoCloseable {
     constructor(script: ByteArray, store: JsonStore? = null) : this(script, null, store, null, null)
     constructor(script: String, store: JsonStore? = null) : this(null, script, store, null, null)
@@ -48,8 +49,9 @@ class LuaSession private constructor(
         scope: CoroutineScope? = null,
         completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
         reading: ReadingCapabilities? = null,
+        modules: Map<String, ByteArray> = emptyMap(),
     ) :
-        this(script, null, null, storage, navigation, http, scope, completed, reading)
+        this(script, null, null, storage, navigation, http, scope, completed, reading, modules)
     constructor(
         script: String,
         storage: (String) -> JsonStore,
@@ -58,8 +60,9 @@ class LuaSession private constructor(
         scope: CoroutineScope? = null,
         completed: ((Long, LuaHttpClient.Response) -> Unit)? = null,
         reading: ReadingCapabilities? = null,
+        modules: Map<String, ByteArray> = emptyMap(),
     ) :
-        this(null, script, null, storage, navigation, http, scope, completed, reading)
+        this(null, script, null, storage, navigation, http, scope, completed, reading, modules)
     init {
         require(http == null || reading == null) { "A session may have only one network capability." }
         require(http == null && reading == null || scope != null && completed != null) {
@@ -73,6 +76,7 @@ class LuaSession private constructor(
     private var globals: Globals? = null
     private var render: LuaFunction? = null
     private var onEvent: LuaFunction? = null
+    private var onResume: LuaFunction? = null
     private var latest: UiNode? = null
     private var result: LuaUiResult? = null
     private var terminal = false
@@ -92,6 +96,14 @@ class LuaSession private constructor(
             load(TableLib())
             set("package", LuaValue.NIL)
         }
+        environment.set("featureModule", object : VarArgFunction() {
+            override fun invoke(args: Varargs): Varargs {
+                if (rendering || args.narg() != 1 || args.arg1().type() != LuaValue.TSTRING) throw LuaError("Invalid module name")
+                val bytes = modules[args.arg1().tojstring()] ?: throw LuaError("Module unavailable")
+                if (bytes.size > LuaUiEngine.MAX_SCRIPT_BYTES) throw LuaError("Module exceeds size limit")
+                return environment.load(ByteArrayInputStream(bytes), "module.luac", "bt", environment).invoke()
+            }
+        })
         store?.let { environment.set("store", storeTable(it)) }
         storage?.let { environment.set("storage", storageTable(it)) }
         navigation?.let { environment.set("navigation", navigationTable(it)) }
@@ -113,12 +125,16 @@ class LuaSession private constructor(
             return stop(LuaUiError.Kind.Runtime, "Lua execution failed.")
         }
         val fields = descriptor.keys().map(LuaValue::tojstring).sorted()
-        if (fields != listOf("onEvent", "render") || !descriptor.get("render").isfunction() || !descriptor.get("onEvent").isfunction()) {
+        val validFields = fields == listOf("onEvent", "render") || fields == listOf("onEvent", "onResume", "render")
+        val resume = descriptor.get("onResume")
+        if (!validFields || !resume.isnil() && !resume.isfunction() ||
+            !descriptor.get("render").isfunction() || !descriptor.get("onEvent").isfunction()) {
             return stop(LuaUiError.Kind.Validation, "Script must return render and onEvent functions.")
         }
         globals = environment
         render = descriptor.get("render").checkfunction()
         onEvent = descriptor.get("onEvent").checkfunction()
+        onResume = descriptor.get("onResume").takeUnless { it.isnil() }?.checkfunction()
         return render()
     }
 
@@ -139,6 +155,19 @@ class LuaSession private constructor(
     }
 
     @Synchronized
+    fun resume(): LuaUiResult {
+        val current = result ?: start()
+        val callback = onResume ?: return current
+        if (terminal) return current
+        return try {
+            if (callback.invoke().narg() != 0) stop(LuaUiError.Kind.Validation, "onResume must return no values.")
+            else render()
+        } catch (_: LuaError) {
+            stop(LuaUiError.Kind.Runtime, "Lua resume failed.")
+        }
+    }
+
+    @Synchronized
     override fun close() {
         cancelRequests()
         terminal = true
@@ -146,6 +175,7 @@ class LuaSession private constructor(
         globals = null
         render = null
         onEvent = null
+        onResume = null
         latest = null
     }
 

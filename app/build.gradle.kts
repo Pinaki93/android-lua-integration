@@ -19,7 +19,10 @@ val luaCompileTasks = fileTree(luaSources) { include("**/*.lua") }.files.map { s
         val output = compiledLua.map { it.file(relativePath.removeSuffix(".lua") + ".luac") }
         inputs.file(source)
         outputs.file(output)
-        doFirst { output.get().asFile.parentFile.mkdirs() }
+        doFirst {
+            require(source.length() <= 500 * 1024) { "Lua source exceeds 500 KB: $relativePath" }
+            output.get().asFile.parentFile.mkdirs()
+        }
         args("-s", "-o", output.get().asFile.absolutePath, source.absolutePath)
     }
 }

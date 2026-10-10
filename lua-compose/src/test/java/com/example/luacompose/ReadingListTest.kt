@@ -51,10 +51,10 @@ class ReadingListTest {
             clipboardText = { clipboardReads++; if (clipboardFailure) error("unavailable"); clipboard },
         )
         val session = if (compiled) LuaSession(
-            compile(File("../lua/reading-list.lua").readText()), { memory.store },
+            compile(readingFixture()), { memory.store },
             scope = scope, completed = { id, result -> completions += id to result }, reading = capability,
         ) else LuaSession(
-            File("../lua/reading-list.lua").readText(), { memory.store },
+            readingFixture(), { memory.store },
             scope = scope, completed = { id, result -> completions += id to result }, reading = capability,
         )
         var result = session.start()
@@ -551,7 +551,7 @@ class ReadingListTest {
         val h = Harness(this, memory)
         assertTrue(h.texts().any { it.contains("Reload to recover") })
         memory.failRead = false; h.action("reload"); h.add(); h.session.close()
-        val session = LuaSession(File("../lua/reading-list.lua").readText(), { error("unavailable") }, scope = this,
+        val session = LuaSession(readingFixture(), { error("unavailable") }, scope = this,
             completed = { _, _ -> }, reading = h.capability)
         val tree = session.start()
         assertTrue(tree is LuaUiResult.Success)

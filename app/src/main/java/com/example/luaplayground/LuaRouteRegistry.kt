@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-data class LuaRoute(val pattern: String, val script: String) {
+data class LuaRoute(val pattern: String, val script: String, val theme: Map<String, Long> = emptyMap()) {
     val arguments: List<String>
         get() = PLACEHOLDER.findAll(pattern).map { it.groupValues[1] }.toList()
 

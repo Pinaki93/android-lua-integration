@@ -31,9 +31,65 @@ internal fun readingColors(dark: Boolean) = if (dark) darkColorScheme(
     surfaceContainerHighest = Color.White, onSurfaceVariant = Color(0xFF52645C),
 )
 
+val FEATURE_COLORS = setOf(
+    "primary", "onPrimary", "primaryContainer", "onPrimaryContainer",
+    "inversePrimary", "secondary", "onSecondary", "secondaryContainer",
+    "onSecondaryContainer", "tertiary", "onTertiary", "tertiaryContainer",
+    "onTertiaryContainer", "background", "onBackground", "surface",
+    "onSurface", "surfaceVariant", "onSurfaceVariant", "surfaceTint",
+    "inverseSurface", "inverseOnSurface", "error", "onError",
+    "errorContainer", "onErrorContainer", "outline", "outlineVariant",
+    "scrim", "surfaceBright", "surfaceDim", "surfaceContainer",
+    "surfaceContainerLowest", "surfaceContainerLow", "surfaceContainerHigh", "surfaceContainerHighest",
+)
+
+internal fun androidx.compose.material3.ColorScheme.withFeatureColors(overrides: Map<String, Long>) = copy(
+    primary = overrides["primary"]?.let { Color(it) } ?: primary,
+    onPrimary = overrides["onPrimary"]?.let { Color(it) } ?: onPrimary,
+    primaryContainer = overrides["primaryContainer"]?.let { Color(it) } ?: primaryContainer,
+    onPrimaryContainer = overrides["onPrimaryContainer"]?.let { Color(it) } ?: onPrimaryContainer,
+    inversePrimary = overrides["inversePrimary"]?.let { Color(it) } ?: inversePrimary,
+    secondary = overrides["secondary"]?.let { Color(it) } ?: secondary,
+    onSecondary = overrides["onSecondary"]?.let { Color(it) } ?: onSecondary,
+    secondaryContainer = overrides["secondaryContainer"]?.let { Color(it) } ?: secondaryContainer,
+    onSecondaryContainer = overrides["onSecondaryContainer"]?.let { Color(it) } ?: onSecondaryContainer,
+    tertiary = overrides["tertiary"]?.let { Color(it) } ?: tertiary,
+    onTertiary = overrides["onTertiary"]?.let { Color(it) } ?: onTertiary,
+    tertiaryContainer = overrides["tertiaryContainer"]?.let { Color(it) } ?: tertiaryContainer,
+    onTertiaryContainer = overrides["onTertiaryContainer"]?.let { Color(it) } ?: onTertiaryContainer,
+    background = overrides["background"]?.let { Color(it) } ?: background,
+    onBackground = overrides["onBackground"]?.let { Color(it) } ?: onBackground,
+    surface = overrides["surface"]?.let { Color(it) } ?: surface,
+    onSurface = overrides["onSurface"]?.let { Color(it) } ?: onSurface,
+    surfaceVariant = overrides["surfaceVariant"]?.let { Color(it) } ?: surfaceVariant,
+    onSurfaceVariant = overrides["onSurfaceVariant"]?.let { Color(it) } ?: onSurfaceVariant,
+    surfaceTint = overrides["surfaceTint"]?.let { Color(it) } ?: surfaceTint,
+    inverseSurface = overrides["inverseSurface"]?.let { Color(it) } ?: inverseSurface,
+    inverseOnSurface = overrides["inverseOnSurface"]?.let { Color(it) } ?: inverseOnSurface,
+    error = overrides["error"]?.let { Color(it) } ?: error,
+    onError = overrides["onError"]?.let { Color(it) } ?: onError,
+    errorContainer = overrides["errorContainer"]?.let { Color(it) } ?: errorContainer,
+    onErrorContainer = overrides["onErrorContainer"]?.let { Color(it) } ?: onErrorContainer,
+    outline = overrides["outline"]?.let { Color(it) } ?: outline,
+    outlineVariant = overrides["outlineVariant"]?.let { Color(it) } ?: outlineVariant,
+    scrim = overrides["scrim"]?.let { Color(it) } ?: scrim,
+    surfaceBright = overrides["surfaceBright"]?.let { Color(it) } ?: surfaceBright,
+    surfaceDim = overrides["surfaceDim"]?.let { Color(it) } ?: surfaceDim,
+    surfaceContainer = overrides["surfaceContainer"]?.let { Color(it) } ?: surfaceContainer,
+    surfaceContainerLowest = overrides["surfaceContainerLowest"]?.let { Color(it) } ?: surfaceContainerLowest,
+    surfaceContainerLow = overrides["surfaceContainerLow"]?.let { Color(it) } ?: surfaceContainerLow,
+    surfaceContainerHigh = overrides["surfaceContainerHigh"]?.let { Color(it) } ?: surfaceContainerHigh,
+    surfaceContainerHighest = overrides["surfaceContainerHighest"]?.let { Color(it) } ?: surfaceContainerHighest,
+)
+
 @Composable
-fun ReadingTheme(content: @Composable () -> Unit) {
-    val colors = readingColors(isSystemInDarkTheme())
+fun FeatureTheme(overrides: Map<String, Long>, content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = MaterialTheme.colorScheme.withFeatureColors(overrides), content = content)
+}
+
+@Composable
+fun ReadingTheme(overrides: Map<String, Long> = emptyMap(), content: @Composable () -> Unit) {
+    val colors = readingColors(isSystemInDarkTheme()).withFeatureColors(overrides)
     val typography = Typography(
         headlineLarge = TextStyle(fontFamily = FontFamily.Serif, fontSize = 30.sp, lineHeight = 38.sp),
         titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),

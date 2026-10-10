@@ -28,7 +28,7 @@ class PlaygroundLuaTest {
         session.dispatch(LuaEvent.Action("playground.reading"))
         session.dispatch(LuaEvent.Action("playground.todo"))
         session.dispatch(LuaEvent.Action("playground.contributors"))
-        assertEquals(listOf("dashboard", "reading-list", "todo", "okhttp-contributors"), routes)
+        assertEquals(listOf("dashboard", "reading-list/index", "todo", "okhttp-contributors"), routes)
     }
 
     private fun LuaUiResult.nodes(): List<UiNode> = when (this) {
